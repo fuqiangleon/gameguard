@@ -22,5 +22,9 @@ block=minecraft-launcher
 block=net.minecraft
 block=Minecraft Education
 
+# 禁止时段屏蔽的网站（和游戏共用时间表；会同时屏蔽 www. 开头的地址）
+# site=youtube.com
+# site=roblox.com
+
 # 结束游戏时弹出的提示
 message=现在不是游戏时间，游戏已被关闭。

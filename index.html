@@ -31,7 +31,7 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
   .muted { color: var(--muted); font-size: 14px; }
   button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line);
-    background: var(--card); color: var(--fg); padding: 9px 14px; }
+    background: var(--card); color: var(--fg); padding: 9px 14px; white-space: nowrap; flex: none; }
   button:hover { border-color: var(--muted); }
   button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   button.danger { color: var(--bad); }
@@ -184,6 +184,25 @@
 
     <section class="card">
       <details>
+        <summary>屏蔽网站</summary>
+        <p class="muted" style="margin-top:0">和游戏使用同一套时间表：禁止时段打不开，允许时段自动恢复。填主域名即可，会同时屏蔽 www 开头的地址。</p>
+        <div class="chips" id="siteChips"></div>
+        <div class="row" style="flex-wrap:nowrap">
+          <input type="text" id="inSite" placeholder="网址，如 youtube.com" autocapitalize="off" autocomplete="off">
+          <button id="btnAddSite">添加</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span class="muted">常用：</span>
+          <button data-site-preset="roblox">Roblox</button>
+          <button data-site-preset="youtube">YouTube</button>
+          <button data-site-preset="tiktok">TikTok</button>
+          <button data-site-preset="minecraft">Minecraft</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
         <summary>关闭游戏时的提示</summary>
         <input type="text" id="inMessage">
       </details>
@@ -225,11 +244,21 @@ const PRESETS = {
   prism: ['PrismLauncher'],
 };
 const DEFAULT_BLOCKS = [...PRESETS.roblox, ...PRESETS.minecraft];
+const SITE_PRESETS = {
+  roblox: ['roblox.com', 'web.roblox.com', 'rbxcdn.com'],
+  youtube: ['youtube.com', 'm.youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+  tiktok: ['tiktok.com', 'm.tiktok.com', 'tiktokv.com'],
+  minecraft: ['minecraft.net', 'curseforge.com', 'modrinth.com'],
+};
+function normalizeSite(s) {
+  s = String(s || '').trim().toLowerCase().replace(/^[a-z]*:\/\//, '').replace(/\/.*$/, '').replace(/^\*\./, '').replace(/^www\./, '');
+  return /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(s) ? s : '';
+}
 const DEFAULT_MESSAGE = '现在不是游戏时间，游戏已被关闭。';
 
 function emptyConfig() {
   const schedule = {}; for (let d = 1; d <= 7; d++) schedule[d] = [];
-  return { enabled: true, allowUntil: '', schedule, blocks: [...DEFAULT_BLOCKS], message: DEFAULT_MESSAGE };
+  return { enabled: true, allowUntil: '', schedule, blocks: [...DEFAULT_BLOCKS], sites: [], message: DEFAULT_MESSAGE };
 }
 
 function parseConfig(text) {
@@ -243,6 +272,7 @@ function parseConfig(text) {
     else if (key === 'allow_until') cfg.allowUntil = val;
     else if (key === 'message') cfg.message = val;
     else if (key === 'block') { if (val.length >= 4 && !cfg.blocks.includes(val)) cfg.blocks.push(val); }
+    else if (key === 'site') { const s = normalizeSite(val); if (s && !cfg.sites.includes(s)) cfg.sites.push(s); }
     else if (key === 'allow') {
       const m = val.match(/^([1-7](?:,[1-7])*) (\d{4}) (\d{4})$/);
       if (!m) continue;
@@ -282,6 +312,9 @@ function serializeConfig(cfg) {
     '',
     '# 要关闭的程序',
     ...cfg.blocks.map(b => `block=${b}`),
+    '',
+    '# 禁止时段屏蔽的网站（会同时屏蔽 www. 开头的地址）',
+    ...(cfg.sites || []).map(s => `site=${s}`),
     '',
     '# 关闭游戏时弹出的提示',
     `message=${msg}`,
@@ -414,7 +447,7 @@ function render() {
   $('statusSub').textContent = st.sub;
   $('swEnabled').checked = draft.enabled;
   $('inMessage').value = draft.message;
-  renderDays(); renderBlocks();
+  renderDays(); renderBlocks(); renderSites();
   $('metaInfo').textContent = gistMeta
     ? `最后修改：${new Date(gistMeta.updated).toLocaleString()}　·　文件：${settings.file}`
     : '';
@@ -483,7 +516,32 @@ function renderBlocks() {
   });
 }
 
+function renderSites() {
+  const box = $('siteChips'); box.innerHTML = '';
+  if (!draft.sites.length) {
+    const n = document.createElement('span'); n.className = 'none'; n.textContent = '还没有屏蔽任何网站';
+    box.appendChild(n);
+  }
+  draft.sites.forEach((s, i) => {
+    const c = document.createElement('span'); c.className = 'chip'; c.textContent = s;
+    const x = document.createElement('button'); x.textContent = '×'; x.title = '移除';
+    x.onclick = () => { draft.sites.splice(i, 1); render(); };
+    c.appendChild(x); box.appendChild(c);
+  });
+}
+
 // ---------- 事件 ----------
+$('btnAddSite').onclick = () => {
+  const s = normalizeSite($('inSite').value);
+  if (!s) return toast('网址格式不对，例如 youtube.com');
+  if (!draft.sites.includes(s)) draft.sites.push(s);
+  $('inSite').value = ''; render();
+};
+$('inSite').onkeydown = e => { if (e.key === 'Enter') $('btnAddSite').click(); };
+document.querySelectorAll('[data-site-preset]').forEach(b => b.onclick = () => {
+  for (const s of SITE_PRESETS[b.dataset.sitePreset]) if (!draft.sites.includes(s)) draft.sites.push(s);
+  render();
+});
 function untilFromMinutes(mins) {
   const base = (() => { const u = parseUntil(saved.allowUntil); return u && u > new Date() ? u : new Date(); })();
   return fmtUntil(new Date(base.getTime() + mins * 60000));

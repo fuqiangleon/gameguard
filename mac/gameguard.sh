@@ -74,6 +74,7 @@ MESSAGE="现在不是游戏时间，游戏已被关闭。"
 ALLOW_UNTIL=""
 ALLOWED=()
 BLOCKS=()
+SITES=()
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%%#*}"                                    # 去掉注释
   line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/\r$//')"
@@ -85,6 +86,8 @@ while IFS= read -r line || [ -n "$line" ]; do
     allow_until) ALLOW_UNTIL="$val" ;;
     allow)       echo "$val" | grep -Eq '^[1-7](,[1-7])* [0-9]{4} [0-9]{4}$' && ALLOWED+=("$val") ;;
     block)       [ ${#val} -ge 4 ] && BLOCKS+=("$val") ;;  # 太短的规则可能误杀，忽略
+    site)        val=$(echo "$val" | tr 'A-Z' 'a-z' | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's/^\*\.//' -e 's/^www\.//')
+                 echo "$val" | grep -Eq '^([a-z0-9-]+\.)+[a-z]{2,}$' && SITES+=("$val") ;;
   esac
 done <<< "$CONFIG"
 [ ${#BLOCKS[@]} -eq 0 ] && while IFS= read -r l; do case "$l" in block=*) BLOCKS+=("${l#block=}");; esac; done <<< "$DEFAULT_CONFIG"
@@ -95,32 +98,100 @@ if [ "$MODE" = "show" ]; then
   echo "allow_until=${ALLOW_UNTIL:-（无）}"
   for a in "${ALLOWED[@]}"; do echo "allow=$a"; done
   for b in "${BLOCKS[@]}"; do echo "block=$b"; done
+  for s in "${SITES[@]}"; do echo "site=$s"; done
   echo "message=$MESSAGE"
 fi
 
-# ---------- 3. 判断现在是否允许玩 ----------
-[ "$ENABLED" = "false" ] && { [ "$MODE" = "show" ] && echo "→ 管控已暂停"; exit 0; }
-
-if [ -n "$ALLOW_UNTIL" ]; then
+# ---------- 3. 判断现在是否允许 ----------
+NOW_ALLOWED=0
+STATE_TEXT="当前禁止游戏"
+if [ "$ENABLED" = "false" ]; then
+  NOW_ALLOWED=1; STATE_TEXT="管控已暂停"
+fi
+if [ $NOW_ALLOWED -eq 0 ] && [ -n "$ALLOW_UNTIL" ]; then
   until_ts=$(date -j -f "%Y-%m-%d %H:%M" "$ALLOW_UNTIL" +%s 2>/dev/null)
   if [ -n "$until_ts" ] && [ "$(date +%s)" -lt "$until_ts" ]; then
-    [ "$MODE" = "show" ] && echo "→ 临时放行中，直到 $ALLOW_UNTIL"
-    exit 0
+    NOW_ALLOWED=1; STATE_TEXT="临时放行中，直到 ${ALLOW_UNTIL}"
+  fi
+fi
+if [ $NOW_ALLOWED -eq 0 ]; then
+  dow=$(date +%u); now=$((10#$(date +%H%M)))
+  for w in "${ALLOWED[@]}"; do
+    read -r days s e <<< "$w"
+    case ",$days," in *",$dow,"*)
+      if [ "$now" -ge $((10#$s)) ] && [ "$now" -lt $((10#$e)) ]; then
+        NOW_ALLOWED=1; STATE_TEXT="当前在允许时间段内（${w}）"; break
+      fi ;;
+    esac
+  done
+fi
+
+# ---------- 4. 网站屏蔽：禁止时段写入 /etc/hosts，允许时段移除 ----------
+HOSTS=/etc/hosts
+MARK_BEGIN="# >>> GameGuard 网站屏蔽（自动生成，请勿手动修改） >>>"
+MARK_END="# <<< GameGuard <<<"
+
+build_hosts_block() {
+  [ ${#SITES[@]} -eq 0 ] && return
+  echo "$MARK_BEGIN"
+  for s in "${SITES[@]}"; do
+    for h in "$s" "www.$s"; do
+      case "$h" in www.www.*) continue ;; esac
+      echo "0.0.0.0 $h"
+      echo ":: $h"
+    done
+  done | awk '!seen[$0]++'
+  echo "$MARK_END"
+}
+
+current_block=$(awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{f=1} f{print} $0==e{f=0}' "$HOSTS")
+if [ $NOW_ALLOWED -eq 0 ]; then wanted_block=$(build_hosts_block); else wanted_block=""; fi
+
+if [ "$MODE" = "show" ]; then
+  if [ -n "$wanted_block" ]; then echo "→ 网站屏蔽：生效中（${#SITES[@]} 个网站）"; else echo "→ 网站屏蔽：未生效"; fi
+  echo "→ ${STATE_TEXT}"
+  exit 0
+fi
+
+if [ "$current_block" != "$wanted_block" ]; then
+  if [ "$MODE" = "dry" ]; then
+    log "[测试] 需要更新 /etc/hosts 网站屏蔽（${#SITES[@]} 个网站）"
+  else
+    tmp_hosts=$(mktemp "$STATE_DIR/hosts.XXXXXX")
+    awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{f=1;next} $0==e{f=0;next} !f' "$HOSTS" > "$tmp_hosts"
+    [ -n "$wanted_block" ] && printf '%s\n' "$wanted_block" >> "$tmp_hosts"
+    if [ -s "$tmp_hosts" ] && grep -q "localhost" "$tmp_hosts"; then   # 防止写坏系统 hosts
+      cat "$tmp_hosts" > "$HOSTS"; chmod 644 "$HOSTS"
+      dscacheutil -flushcache 2>/dev/null; killall -HUP mDNSResponder 2>/dev/null
+      if [ -n "$wanted_block" ]; then log "已启用网站屏蔽：${SITES[*]}"; else log "已解除网站屏蔽"; fi
+    else
+      log "生成的 hosts 文件异常，未写入"
+    fi
+    rm -f "$tmp_hosts"
   fi
 fi
 
-dow=$(date +%u); now=$((10#$(date +%H%M)))
-for w in "${ALLOWED[@]}"; do
-  read -r days s e <<< "$w"
-  case ",$days," in *",$dow,"*)
-    if [ "$now" -ge $((10#$s)) ] && [ "$now" -lt $((10#$e)) ]; then
-      [ "$MODE" = "show" ] && echo "→ 当前在允许时间段内（${w}）"
-      exit 0
-    fi ;;
-  esac
-done
-[ "$MODE" = "show" ] && echo "→ 当前禁止游戏"
-[ "$MODE" = "show" ] && exit 0
+# 防止浏览器用“安全 DNS”绕过 hosts（Chrome / Edge / Brave / Firefox）
+if [ "$MODE" = "run" ] && [ ${#SITES[@]} -gt 0 ]; then
+  mkdir -p "/Library/Managed Preferences"
+  for dom in com.google.Chrome com.microsoft.Edge com.brave.Browser; do
+    defaults write "/Library/Managed Preferences/$dom" DnsOverHttpsMode -string off 2>/dev/null
+  done
+  for ff in /Applications/Firefox*.app $(ls -d /Users/*/Applications/Firefox*.app 2>/dev/null); do
+    [ -d "$ff" ] || continue
+    pol="$ff/Contents/Resources/distribution/policies.json"
+    if [ ! -f "$pol" ]; then
+      mkdir -p "$(dirname "$pol")"
+      printf '{"policies":{"DNSOverHTTPS":{"Enabled":false,"Locked":true}}}\n' > "$pol"
+    fi
+  done
+  if [ ! -f "$STATE_DIR/doh-disabled" ]; then
+    touch "$STATE_DIR/doh-disabled"
+    log "已关闭浏览器的安全 DNS，防止绕过网站屏蔽（重启浏览器后生效）"
+  fi
+fi
+
+[ $NOW_ALLOWED -eq 1 ] && exit 0
 
 # ---------- 4. 查找并结束进程 ----------
 killed=0
