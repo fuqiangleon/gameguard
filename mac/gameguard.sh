@@ -5,7 +5,7 @@
 # 配置地址写在 /usr/local/etc/gameguard.conf（只有 root 能读写）：
 #     CONFIG_URL="https://.../gameguard.txt"
 #     AUTH_TOKEN=""          # 可选，作为 Authorization: Bearer 发送
-#     REFRESH_SECONDS=300    # 可选，多久拉取一次网络配置
+#     REFRESH_SECONDS=60     # 可选，多久拉取一次网络配置（秒）
 #
 # 手动测试（只检测、不结束）：  sudo /usr/local/bin/gameguard.sh --dry-run
 # 查看当前生效的配置：         sudo /usr/local/bin/gameguard.sh --show
@@ -20,7 +20,7 @@ LOG=/var/log/gameguard.log
 
 CONFIG_URL=""
 AUTH_TOKEN=""
-REFRESH_SECONDS=300
+REFRESH_SECONDS=60
 [ -f "$LOCAL_CONF" ] && . "$LOCAL_CONF"     # 本地文件只有 root 可写
 
 # 网络配置拿不到、也没有缓存时使用的默认规则（全天禁止）
@@ -50,9 +50,25 @@ if [ -n "$CONFIG_URL" ] && [ $need_refresh -eq 1 ]; then
   tmp=$(mktemp "$STATE_DIR/dl.XXXXXX")
   hdr=()
   [ -n "$AUTH_TOKEN" ] && hdr=(-H "Authorization: Bearer $AUTH_TOKEN")
-  if curl -fsSL --max-time 15 --proto '=https' "${hdr[@]}" \
+  ok=0
+  # 优先走 GitHub API（没有 CDN 缓存，保存后约 1 分钟生效）；失败再用 raw 地址（可能有约 5 分钟缓存）
+  gid=$(echo "$CONFIG_URL" | sed -nE 's#^https://gist\.githubusercontent\.com/[^/]+/([0-9a-fA-F]+)/raw/.*#\1#p')
+  gfile=${CONFIG_URL##*/}; gfile=${gfile%%\?*}
+  if [ -n "$gid" ] && curl -fsSL --max-time 15 --proto '=https' "${hdr[@]}" \
+          -H "Accept: application/vnd.github+json" "https://api.github.com/gists/$gid" -o "$tmp.json" \
+     && osascript -l JavaScript -e 'ObjC.import("Foundation");
+function run(a){var s=$.NSString.stringWithContentsOfFileEncodingError(a[0],$.NSUTF8StringEncoding,null).js;
+var f=JSON.parse(s).files||{};var x=f[a[1]]||f[Object.keys(f)[0]];return (x&&!x.truncated)?x.content:"";}' \
+          "$tmp.json" "$gfile" > "$tmp" 2>/dev/null \
+     && grep -q '^enabled=' "$tmp"; then
+    ok=1
+  elif curl -fsSL --max-time 15 --proto '=https' "${hdr[@]}" \
           -H "Cache-Control: no-cache" "$CONFIG_URL?t=$(date +%s)" -o "$tmp" \
-     && grep -q '^enabled=' "$tmp" && [ "$(wc -c < "$tmp")" -lt 65536 ]; then
+     && grep -q '^enabled=' "$tmp"; then
+    ok=1
+  fi
+  rm -f "$tmp.json"
+  if [ $ok -eq 1 ] && [ "$(wc -c < "$tmp")" -lt 65536 ]; then
     if ! cmp -s "$tmp" "$CACHE"; then
       mv "$tmp" "$CACHE"; chmod 600 "$CACHE"
       log "已更新网络配置"

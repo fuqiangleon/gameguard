@@ -5,7 +5,7 @@
 - **家长控制台**：`index.html`，部署在 GitHub Pages，手机打开即可设置。配置保存在一个 Secret Gist 里。
 - **Mac 端**：`mac/` 目录。在孩子的 Mac 上用管理员账户运行
   `sudo ./install.sh "https://gist.githubusercontent.com/<用户名>/<gist id>/raw/gameguard.txt"`
-  每分钟检查一次，每 5 分钟读取一次 Gist 配置。
+  每分钟检查一次，每分钟读取一次 Gist 配置。
   禁止时段会结束游戏进程，并通过 `/etc/hosts` 屏蔽配置里的网站。
 
 ### 更新 Mac 端

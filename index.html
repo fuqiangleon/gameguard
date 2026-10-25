@@ -205,7 +205,7 @@
     <button class="ghost" id="btnCloseHelp">关闭</button>
   </div>
   <div class="help-body">
-    <p class="muted" style="margin-top:0">GameGuard 由两部分组成：孩子 Mac 上的<strong>管控程序</strong>，和你手机上的这个<strong>控制台</strong>。你在控制台改的设置会保存到 GitHub Gist，Mac 每 5 分钟读取一次。</p>
+    <p class="muted" style="margin-top:0">GameGuard 由两部分组成：孩子 Mac 上的<strong>管控程序</strong>，和你手机上的这个<strong>控制台</strong>。你在控制台改的设置会保存到 GitHub Gist，Mac 每分钟读取一次。</p>
 
     <details open>
       <summary>它会做什么</summary>
@@ -218,7 +218,7 @@
 
     <details>
       <summary>多久生效？</summary>
-      <p>点击保存后，<b>一般 5–10 分钟内</b>在孩子的 Mac 上生效（GitHub 的缓存加上 Mac 每 5 分钟读取一次）。</p>
+      <p>点击保存后，<b>一般 1–2 分钟内</b>在孩子的 Mac 上生效（Mac 每分钟检查一次）。</p>
       <p>想立即生效，在孩子的 Mac 上用管理员账户运行：</p>
       <pre>sudo rm -f /var/db/gameguard/config.cache && sudo /usr/local/bin/gameguard.sh</pre>
     </details>
@@ -333,7 +333,7 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
           <input type="time" id="inUntil">
           <button class="primary" id="btnApplyUntil">确定</button>
         </div>
-        <p class="hint">点击立即保存，孩子电脑约 5–10 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
+        <p class="hint">点击立即保存，孩子电脑一般 1–2 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
       </div>
 
       <div class="card">
