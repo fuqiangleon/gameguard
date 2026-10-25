@@ -272,6 +272,8 @@
         <li>点右上角“锁定”或关闭标签页后，需要重新输入密码。</li>
         <li><b>忘记密码</b>：在解锁页点“忘记密码”，清除后重新填写 Gist 地址和令牌（令牌找不到就在 GitHub 重新生成一个）。</li>
         <li>不要在孩子的设备上登录这个控制台。</li>
+        <li><b>分享给家人或新设备</b>：在“设置 → 分享给家人”生成登录链接发给对方，再把密码另外告诉对方。对方打开链接输入密码即可，登录后可以在“修改密码”里换成自己的密码（只影响对方那台设备）。</li>
+        <li>如果担心链接和密码泄露：到 GitHub 删除原来的令牌、生成新令牌，然后在“更换 Gist 或令牌”里填入新令牌，并重新分享。</li>
         <li>可以在 Safari 里点“分享 → 添加到主屏幕”，像 App 一样使用。</li>
       </ul>
     </details>
@@ -407,6 +409,12 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
           <button class="block" id="btnShowText">查看配置文本</button>
         </div>
         <pre class="hidden" id="rawText"></pre>
+      </div>
+      <div class="card">
+        <h2>分享给家人 / 新设备</h2>
+        <p class="muted" style="margin-top:-4px">生成一个登录链接。对方打开链接、输入你的控制台密码，就能直接使用，不用再填 Gist 地址和令牌。</p>
+        <button class="block primary" id="btnShareLink">生成并分享登录链接</button>
+        <p class="hint">链接里的信息已用密码加密，没有密码打不开。<b>链接和密码请分开发送</b>（比如链接发微信，密码当面告诉）。对方登录后可以在自己的设备上改成自己的密码。</p>
       </div>
       <div class="card">
         <h2>安全</h2>
@@ -834,13 +842,32 @@ function showSetup(mode) {
   cancel.onclick = () => { $('lockArea').classList.add('hidden'); $('appArea').classList.remove('hidden'); };
 }
 
+let pendingShared = null;   // 从分享链接带来的加密信息，解锁成功后才保存到本机
+$('btnShareLink').onclick = async () => {
+  const enc = ls.get(LS_KEY);
+  if (!enc) return toast('请先设置密码');
+  const url = location.origin + location.pathname + '#join=' + encodeURIComponent(btoa(enc));
+  const text = 'GameGuard 家长控制台登录链接（需要密码才能打开）';
+  try {
+    if (navigator.share) { await navigator.share({ title: 'GameGuard', text, url }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(url); toast('链接已复制，记得把密码另外告诉对方', 3500); }
+  catch { prompt('复制下面的链接发给对方：', url); }
+};
+
 $('btnUnlock').onclick = async () => {
   const now = Date.now();
   if (now < lockedUntil) return $('unlockErr').textContent = `尝试次数过多，请 ${Math.ceil((lockedUntil - now) / 1000)} 秒后再试`;
   const pw = $('inUnlock').value; if (!pw) return;
   $('btnUnlock').disabled = true; $('unlockErr').textContent = '';
   try {
-    settings = await decryptSettings(ls.get(LS_KEY), pw);
+    const blob = pendingShared || ls.get(LS_KEY);
+    settings = await decryptSettings(blob, pw);
+    if (pendingShared) {
+      ls.set(LS_KEY, pendingShared); pendingShared = null;
+      history.replaceState(null, '', location.pathname);
+      toast('已在这台设备上登录', 3000);
+    }
     failCount = 0; ss.set(settings); showApp();
   } catch {
     failCount++;
@@ -852,7 +879,8 @@ $('btnUnlock').onclick = async () => {
 $('inUnlock').onkeydown = e => { if (e.key === 'Enter') $('btnUnlock').click(); };
 $('btnForgot').onclick = () => {
   if (!confirm('忘记密码只能清除本机保存的信息，然后重新填写 Gist 地址和令牌。继续？')) return;
-  ls.del(LS_KEY); ls.del(LS_OLD); ss.del(); settings = null; showSetup('new');
+  ls.del(LS_KEY); ls.del(LS_OLD); ss.del(); settings = null; pendingShared = null;
+  history.replaceState(null, '', location.pathname); showSetup('new');
 };
 $('btnSetup').onclick = async () => {
   const err = m => { $('setupErr').textContent = m; };
@@ -899,6 +927,20 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('helpView'
   if (h.get('gist')) $('inGist').value = h.get('gist');
   if (h.get('file')) $('inFile').value = h.get('file');
 
+  if (h.get('join')) {                    // 打开了分享的登录链接
+    try {
+      const blob = atob(h.get('join')); const p = JSON.parse(blob);
+      if (p.v === 2 && p.salt && p.iv && p.ct) {
+        if (blob === ls.get(LS_KEY)) { history.replaceState(null, '', location.pathname); }
+        else {
+          pendingShared = blob; ss.del();
+          showUnlock();
+          $('unlockView').querySelector('.lead').textContent = '你收到了一个控制台登录链接，输入密码即可在这台设备上使用';
+          return;
+        }
+      }
+    } catch {}
+  }
   const sess = ss.get();
   if (sess && sess.token && ls.get(LS_KEY)) { settings = sess; showApp(); return; }
   if (ls.get(LS_KEY)) { showUnlock(); return; }
