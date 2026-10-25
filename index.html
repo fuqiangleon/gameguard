@@ -193,6 +193,12 @@
       <div class="err" id="setupErr"></div>
       <button class="primary block" id="btnSetup">完成设置</button>
       <p class="hint" style="text-align:center">密码用于加密保存令牌，只存在这台设备上。忘记密码只能清除后重新设置。</p>
+      <div id="joinPaste" style="margin-top:20px;border-top:1px solid var(--line, #ddd);padding-top:16px">
+        <label class="field"><span>已有家人分享的登录链接？粘贴到这里</span>
+          <input type="text" id="inJoin" placeholder="https://fuqiangleon.github.io/gameguard/#join=…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <div class="err" id="joinErr"></div>
+        <button class="block" id="btnJoin">使用登录链接</button>
+      </div>
     </div>
     <p style="text-align:center;margin-top:8px"><button class="linkbtn" data-help>使用说明</button></p>
   </div>
@@ -291,11 +297,19 @@
     </details>
 
     <details>
+      <summary>添加到手机桌面（App 模式）</summary>
+      <ul>
+        <li><b>iPhone / iPad</b>：用 Safari 打开控制台 → 点底部「分享」按钮 →「添加到主屏幕」。</li>
+        <li><b>安卓</b>：用 Chrome 打开 → 右上角 ⋮ →「安装应用」或「添加到主屏幕」；也可以在「设置」页点「安装到桌面」。</li>
+        <li>iPhone 上从桌面图标第一次打开时，可能需要重新登录（桌面 App 和 Safari 的数据是分开保存的）。在 Safari 的「设置」页点「生成并分享登录链接」→ 复制链接，然后在桌面 App 的首次设置页底部粘贴，输入密码即可。</li>
+      </ul>
+    </details>
+
+    <details>
       <summary>更新 Mac 上的管控程序</summary>
       <p>只有管控程序本身增加了新功能时才需要更新；平时在控制台改设置不需要。用管理员账户在终端运行：</p>
-      <pre>cd /tmp && curl -fsSL -o gg.zip https://github.com/fuqiangleon/gameguard/archive/refs/heads/main.zip
-unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
-      <p>卸载：在同一个目录运行 <code>sudo ./install.sh uninstall</code>。</p>
+      <pre>curl -fsSL https://raw.githubusercontent.com/fuqiangleon/gameguard/main/mac/update.sh | sudo bash</pre>
+      <p>会沿用已保存的 Gist 地址。</p>
     </details>
   </div>
 </div>
@@ -417,6 +431,11 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
           <button class="block" id="btnShowText">查看配置文本</button>
         </div>
         <pre class="hidden" id="rawText"></pre>
+      </div>
+      <div class="card">
+        <h2>添加到手机桌面</h2>
+        <p class="muted" style="margin-top:-4px" id="installText">像 App 一样从桌面打开，全屏显示。<br>iPhone：用 Safari 打开 → 点底部「分享」→「添加到主屏幕」。<br>安卓：用 Chrome 打开 → 右上角菜单 →「添加到主屏幕 / 安装应用」。</p>
+        <button class="block primary hidden" id="btnInstall">安装到桌面</button>
       </div>
       <div class="card">
         <h2>分享给家人 / 新设备</h2>
@@ -934,6 +953,24 @@ $('inPw2').onkeydown = e => { if (e.key === 'Enter') $('btnSetup').click(); };
 document.querySelectorAll('[data-help]').forEach(b => b.onclick = () => { $('helpView').classList.remove('hidden'); $('helpView').scrollTop = 0; });
 $('btnCloseHelp').onclick = () => $('helpView').classList.add('hidden');
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('helpView').classList.add('hidden'); });
+
+// ================= 粘贴登录链接 / 安装到桌面 =================
+$('btnJoin').onclick = () => {
+  const m = $('inJoin').value.trim().match(/[#&]join=([^&\s]+)/);
+  if (!m) return $('joinErr').textContent = '这不是有效的登录链接';
+  location.hash = 'join=' + m[1];
+  location.reload();
+};
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('btnInstall').classList.remove('hidden'); });
+$('btnInstall').onclick = async () => {
+  if (!installEvt) return;
+  installEvt.prompt(); await installEvt.userChoice.catch(() => {});
+  installEvt = null; $('btnInstall').classList.add('hidden');
+};
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+if (standalone) $('installText').textContent = '已经是从桌面打开的 App 模式。';
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
 // ================= 启动 =================
 (function init() {
