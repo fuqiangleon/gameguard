@@ -17,3 +17,11 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh   # 不填地�
 
 网页里不包含任何密钥：Gist 地址和 GitHub 令牌用家长设置的密码加密（PBKDF2 + AES-GCM）后，只保存在家长自己设备的浏览器里；打开控制台需要输入密码，关闭标签页或点“锁定”后需重新输入。手机上可“添加到主屏幕”当作 App 使用。
 令牌请使用 Fine-grained token，只授予 **Gists: Read and write** 权限。
+
+## 在线升级（Mac）
+
+在管理员账户的终端执行（沿用已保存的 Gist 地址）：
+
+```
+curl -fsSL https://raw.githubusercontent.com/fuqiangleon/gameguard/main/mac/update.sh | sudo bash
+```
