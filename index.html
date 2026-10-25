@@ -248,8 +248,10 @@
       <summary>管控程序和屏蔽网站</summary>
       <ul>
         <li><b>管控的程序</b>：填进程名里的关键字（至少 4 个字符），比如 <code>Discord</code>。常用的可以点下面的快捷按钮添加。</li>
-        <li><b>屏蔽网站</b>：填主域名，比如 <code>youtube.com</code>，会同时屏蔽 <code>www.youtube.com</code>。其他子域名（如 <code>m.youtube.com</code>）需要单独添加，快捷按钮会一起加上。</li>
+        <li><b>屏蔽网站</b>：填主域名，比如 <code>youtube.com</code>，会同时屏蔽它的<b>所有子域名</b>（<code>www.youtube.com</code>、<code>m.youtube.com</code> 等）。不支持按关键字模糊匹配（比如只填 <code>chat</code>），需要填写具体域名。</li>
         <li>网站和游戏共用同一个时间表。</li>
+        <li><b>Google 地图</b>的网页地址是 <code>google.com/maps</code>，属于 Google 搜索的同一个域名，无法单独屏蔽。快捷按钮屏蔽的是地图的数据服务，通常会让地图加载不出来，但不能保证完全打不开；如果要完全禁止，只能屏蔽整个 <code>google.com</code>（搜索也会一起被屏蔽）。</li>
+        <li>ChatGPT 和 Apple 地图如果是用<b>桌面 App</b> 打开的，还需要在“管控的程序”里点对应的快捷按钮，App 才会被关闭。</li>
         <li>网站被屏蔽后，<b>浏览器需要完全退出再打开</b>才会立即生效；已经打开的网页可能要刷新。</li>
       </ul>
     </details>
@@ -374,6 +376,8 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
           <button data-preset="prism">+ Prism Launcher</button>
           <button data-preset="steam">+ Steam</button>
           <button data-preset="discord">+ Discord</button>
+          <button data-preset="chatgpt">+ ChatGPT</button>
+          <button data-preset="applemaps">+ Apple 地图</button>
         </div>
       </div>
 
@@ -389,8 +393,12 @@ unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
           <button data-site-preset="roblox">+ Roblox</button>
           <button data-site-preset="tiktok">+ TikTok</button>
           <button data-site-preset="minecraft">+ Minecraft</button>
+          <button data-site-preset="chatgpt">+ ChatGPT</button>
+          <button data-site-preset="googlemaps">+ Google 地图</button>
+          <button data-site-preset="applemaps">+ Apple 地图</button>
+          <button data-site-preset="all">+ 全部常用</button>
         </div>
-        <p class="hint">和游戏共用时间表。填主域名会同时屏蔽 www 开头的地址。</p>
+        <p class="hint">和游戏共用时间表。填主域名即可，<b>它的所有子域名会一起屏蔽</b>（如 youtube.com 会同时屏蔽 m.youtube.com、music.youtube.com）。</p>
       </div>
 
       <div class="card">
@@ -459,6 +467,8 @@ const PRESETS = {
   prism: ['PrismLauncher'],
   steam: ['Steam.app', 'steam_osx'],
   discord: ['Discord.app'],
+  chatgpt: ['ChatGPT.app'],
+  applemaps: ['Maps.app'],
 };
 const DEFAULT_BLOCKS = [...PRESETS.roblox, ...PRESETS.minecraft];
 const SITE_PRESETS = {
@@ -466,6 +476,9 @@ const SITE_PRESETS = {
   youtube: ['youtube.com', 'm.youtube.com', 'youtu.be', 'youtube-nocookie.com'],
   tiktok: ['tiktok.com', 'm.tiktok.com', 'tiktokv.com'],
   minecraft: ['minecraft.net', 'curseforge.com', 'modrinth.com'],
+  chatgpt: ['chatgpt.com', 'chat.openai.com', 'openai.com'],
+  googlemaps: ['maps.google.com', 'maps.googleapis.com', 'maps.gstatic.com', 'maps.app.goo.gl'],
+  applemaps: ['maps.apple.com'],
 };
 const DEFAULT_MESSAGE = '现在不是游戏时间，游戏已被关闭。';
 
@@ -527,7 +540,7 @@ function serializeConfig(cfg) {
     '# 要关闭的程序',
     ...cfg.blocks.map(b => `block=${b}`),
     '',
-    '# 禁止时段屏蔽的网站（会同时屏蔽 www. 开头的地址）',
+    '# 禁止时段屏蔽的网站（会同时屏蔽它的所有子域名）',
     ...(cfg.sites || []).map(s => `site=${s}`),
     '',
     '# 关闭游戏时弹出的提示',
@@ -783,7 +796,11 @@ document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   for (const p of PRESETS[b.dataset.preset]) if (!draft.blocks.includes(p)) draft.blocks.push(p); render();
 });
 document.querySelectorAll('[data-site-preset]').forEach(b => b.onclick = () => {
-  for (const s of SITE_PRESETS[b.dataset.sitePreset]) if (!draft.sites.includes(s)) draft.sites.push(s); render();
+  const key = b.dataset.sitePreset;
+  const list = key === 'all' ? Object.values(SITE_PRESETS).flat() : SITE_PRESETS[key];
+  let added = 0;
+  for (const s of list) if (!draft.sites.includes(s)) { draft.sites.push(s); added++; }
+  render(); toast(added ? `已添加 ${added} 个网站，记得保存` : '这些网站已经在列表里了');
 });
 $('btnSave').onclick = () => {
   for (let d = 1; d <= 7; d++) if (draft.schedule[d].some(r => r.start >= r.end)) { openDay = d; goTab('time'); render(); return toast(DAY_NAMES[d] + ' 有时间段结束早于开始'); }

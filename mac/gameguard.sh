@@ -147,6 +147,31 @@ build_hosts_block() {
 current_block=$(awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{f=1} f{print} $0==e{f=0}' "$HOSTS")
 if [ $NOW_ALLOWED -eq 0 ]; then wanted_block=$(build_hosts_block); else wanted_block=""; fi
 
+# 子域名一并屏蔽：/etc/resolver/<域名> 让该域名及其所有子域名都交给一个不存在的 DNS 服务器，从而解析失败
+RESOLVER_DIR=/etc/resolver
+RESOLVER_MARK="# GameGuard"
+sync_resolvers() {
+  local changed=0 f name keep s
+  mkdir -p "$RESOLVER_DIR"
+  # 删除不再需要的（只删 GameGuard 自己创建的文件）
+  for f in "$RESOLVER_DIR"/*; do
+    [ -f "$f" ] || continue
+    head -1 "$f" | grep -qF "$RESOLVER_MARK" || continue
+    name=$(basename "$f"); keep=0
+    if [ $NOW_ALLOWED -eq 0 ]; then for s in "${SITES[@]}"; do [ "$s" = "$name" ] && keep=1; done; fi
+    [ $keep -eq 0 ] && { rm -f "$f"; changed=1; }
+  done
+  # 添加需要的（不覆盖别人已有的同名文件）
+  if [ $NOW_ALLOWED -eq 0 ]; then
+    for s in "${SITES[@]}"; do
+      f="$RESOLVER_DIR/$s"
+      [ -f "$f" ] && continue
+      printf '%s\nnameserver 127.0.0.1\nport 9\ntimeout 1\n' "$RESOLVER_MARK" > "$f"; chmod 644 "$f"; changed=1
+    done
+  fi
+  return $changed
+}
+
 if [ "$MODE" = "show" ]; then
   if [ -n "$wanted_block" ]; then echo "→ 网站屏蔽：生效中（${#SITES[@]} 个网站）"; else echo "→ 网站屏蔽：未生效"; fi
   echo "→ ${STATE_TEXT}"
@@ -168,6 +193,12 @@ if [ "$current_block" != "$wanted_block" ]; then
       log "生成的 hosts 文件异常，未写入"
     fi
     rm -f "$tmp_hosts"
+  fi
+fi
+
+if [ "$MODE" = "run" ]; then
+  if ! sync_resolvers; then
+    dscacheutil -flushcache 2>/dev/null; killall -HUP mDNSResponder 2>/dev/null
   fi
 fi
 

@@ -21,6 +21,10 @@ if [ "$1" = "uninstall" ]; then
     cat "$tmp" > /etc/hosts; rm -f "$tmp"
     dscacheutil -flushcache; killall -HUP mDNSResponder 2>/dev/null || true
   fi
+  for f in /etc/resolver/*; do
+    [ -f "$f" ] && head -1 "$f" | grep -qF "# GameGuard" && rm -f "$f"
+  done
+  dscacheutil -flushcache; killall -HUP mDNSResponder 2>/dev/null || true
   for dom in com.google.Chrome com.microsoft.Edge com.brave.Browser; do
     defaults delete "/Library/Managed Preferences/$dom" DnsOverHttpsMode 2>/dev/null || true
   done
