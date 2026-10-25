@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5c">
+<title>GameGuard 家长控制台</title>
+<style>
+  :root {
+    --bg: #f4f3ef; --card: #ffffff; --fg: #1d1d1b; --muted: #6b6a64; --line: #e3e1da;
+    --accent: #1f6f5c; --accent-fg: #ffffff; --accent-soft: #e2f1ec;
+    --ok: #2d7a3a; --ok-soft: #e4f3e6; --bad: #b3361f; --bad-soft: #fbe9e5;
+    --warn: #8a5a00; --warn-soft: #fbf0d9; --pause: #555; --pause-soft: #ececec;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141513; --card: #1e1f1c; --fg: #ecebe6; --muted: #9c9a92; --line: #33342f;
+      --accent: #5fbf9f; --accent-fg: #0f1a16; --accent-soft: #1c3029;
+      --ok: #7cd38a; --ok-soft: #1c2e1f; --bad: #f08a72; --bad-soft: #3a211b;
+      --warn: #e9b65a; --warn-soft: #33281a; --pause: #bbb; --pause-soft: #2a2a2a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  h2 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--fg); padding: 9px 14px; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button.ghost { border: none; background: none; padding: 6px 8px; color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text], input[type=password], input[type=time] {
+    font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 10px; width: 100%; }
+  input[type=time] { width: auto; min-width: 0; }
+  .range input[type=time] { flex: 1 1 0; padding: 8px 4px 8px 8px; font-size: 15px; }
+  .range { gap: 4px; }
+  .range .ghost { white-space: nowrap; flex: none; }
+  label.field { display: block; margin-bottom: 12px; }
+  label.field span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+
+  .status { border-radius: var(--radius); padding: 18px 16px; margin-bottom: 14px; }
+  .status .big { font-size: 22px; font-weight: 700; }
+  .status.block { background: var(--bad-soft); color: var(--bad); }
+  .status.allow { background: var(--ok-soft); color: var(--ok); }
+  .status.temp  { background: var(--warn-soft); color: var(--warn); }
+  .status.pause { background: var(--pause-soft); color: var(--pause); }
+  .status.unknown { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+  .status .sub { font-size: 14px; margin-top: 4px; opacity: .9; }
+
+  .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .quick button { padding: 12px 6px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .spread { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  .switch { position: relative; width: 52px; height: 30px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; z-index: 1; }
+  .switch .track { position: absolute; inset: 0; background: var(--line); border-radius: 15px; transition: background .2s; }
+  .switch .knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked ~ .track { background: var(--accent); }
+  .switch input:checked ~ .knob { transform: translateX(22px); }
+
+  .day { border-top: 1px solid var(--line); padding: 10px 0; }
+  .day:first-of-type { border-top: none; }
+  .day-head { display: flex; align-items: center; justify-content: space-between; }
+  .day-name { font-weight: 600; }
+  .range { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .range .dash { color: var(--muted); }
+  .none { font-size: 14px; color: var(--muted); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--fg);
+    border-radius: 999px; padding: 4px 4px 4px 12px; font-size: 14px; }
+  .chip button { border: none; background: none; padding: 2px 8px; color: var(--muted); }
+
+  details > summary { cursor: pointer; font-weight: 600; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: "›"; float: right; color: var(--muted); transition: transform .2s; }
+  details[open] > summary::after { transform: rotate(90deg); }
+  details[open] > summary { margin-bottom: 12px; }
+
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: none; }
+  .savebar.show { display: block; }
+  .savebar .inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  .toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+    padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  pre { white-space: pre-wrap; word-break: break-all; background: var(--bg); border-radius: 10px; padding: 12px; font-size: 13px; margin: 0; }
+  .hidden { display: none !important; }
+  @media (max-width: 380px) { .quick { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>GameGuard 家长控制台</h1>
+    <button class="ghost" id="btnReload" title="刷新">刷新</button>
+  </header>
+
+  <!-- 首次设置 -->
+  <section class="card hidden" id="setupCard">
+    <h2>连接你的配置 Gist</h2>
+    <p class="muted">只需设置一次，信息只保存在这台设备的浏览器里，不会上传到别处。</p>
+    <label class="field"><span>Gist 地址或 ID</span>
+      <input type="text" id="inGist" placeholder="https://gist.github.com/用户名/3284f4cc…" autocomplete="off"></label>
+    <label class="field"><span>文件名</span>
+      <input type="text" id="inFile" value="gameguard.txt" autocomplete="off"></label>
+    <label class="field"><span>GitHub 访问令牌（需要 Gists 读写权限）</span>
+      <input type="password" id="inToken" placeholder="github_pat_…" autocomplete="off"></label>
+    <div class="row">
+      <button class="primary" id="btnConnect">连接</button>
+      <button class="hidden" id="btnCancelSetup">取消</button>
+    </div>
+  </section>
+
+  <div id="app" class="hidden">
+    <!-- 当前状态 -->
+    <section class="status unknown" id="status">
+      <div class="big" id="statusBig">读取中…</div>
+      <div class="sub" id="statusSub"></div>
+    </section>
+
+    <!-- 快捷操作 -->
+    <section class="card">
+      <h2>临时放行</h2>
+      <div class="quick">
+        <button data-mins="30">30 分钟</button>
+        <button data-mins="60">1 小时</button>
+        <button data-mins="120">2 小时</button>
+        <button data-mins="today">今天不限</button>
+        <button id="btnCustomUntil">到指定时间</button>
+        <button class="danger" id="btnEndAllow">结束放行</button>
+      </div>
+      <div class="row hidden" id="customUntilRow" style="margin-top:10px">
+        <input type="time" id="inUntil">
+        <button class="primary" id="btnApplyUntil">放行到这个时间</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0">点击后立即保存。孩子的电脑最长约 5–10 分钟内生效。</p>
+    </section>
+
+    <section class="card">
+      <div class="spread">
+        <div>
+          <h2 style="margin:0">管控总开关</h2>
+          <div class="muted">关闭后完全不管控，直到再次打开</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="swEnabled"><span class="track"></span><span class="knob"></span></label>
+      </div>
+    </section>
+
+    <!-- 每周时间表 -->
+    <section class="card">
+      <h2>每周允许时间</h2>
+      <p class="muted" style="margin-top:-6px">不在这些时间段内，游戏会被自动关闭。</p>
+      <div id="days"></div>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>管控的程序</summary>
+        <div class="chips" id="blockChips"></div>
+        <div class="row" style="flex-wrap:nowrap">
+          <input type="text" id="inBlock" placeholder="进程关键字，如 PrismLauncher">
+          <button id="btnAddBlock">添加</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span class="muted">常用：</span>
+          <button data-preset="roblox">Roblox</button>
+          <button data-preset="minecraft">Minecraft</button>
+          <button data-preset="prism">Prism Launcher</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>关闭游戏时的提示</summary>
+        <input type="text" id="inMessage">
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>高级</summary>
+        <p class="muted" id="metaInfo"></p>
+        <div class="row" style="margin-bottom:12px">
+          <a id="lnkGist" target="_blank" rel="noopener"><button>在 GitHub 打开</button></a>
+          <button id="btnShowText">查看配置文本</button>
+          <button id="btnSettings">更换 Gist / 令牌</button>
+          <button class="danger" id="btnForget">清除本机保存的信息</button>
+        </div>
+        <pre class="hidden" id="rawText"></pre>
+      </details>
+    </section>
+  </div>
+</main>
+
+<div class="savebar" id="saveBar">
+  <div class="inner">
+    <span>有未保存的修改</span>
+    <div class="row">
+      <button id="btnDiscard">放弃</button>
+      <button class="primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ==LOGIC START== （纯函数：解析/生成配置文本，与 Mac 端 gameguard.sh 的格式一致）
+const DAY_NAMES = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const PRESETS = {
+  roblox: ['RobloxPlayer', 'RobloxStudio', 'Roblox.app'],
+  minecraft: ['Minecraft.app', 'minecraft-launcher', 'net.minecraft', 'Minecraft Education'],
+  prism: ['PrismLauncher'],
+};
+const DEFAULT_BLOCKS = [...PRESETS.roblox, ...PRESETS.minecraft];
+const DEFAULT_MESSAGE = '现在不是游戏时间，游戏已被关闭。';
+
+function emptyConfig() {
+  const schedule = {}; for (let d = 1; d <= 7; d++) schedule[d] = [];
+  return { enabled: true, allowUntil: '', schedule, blocks: [...DEFAULT_BLOCKS], message: DEFAULT_MESSAGE };
+}
+
+function parseConfig(text) {
+  const cfg = emptyConfig(); cfg.blocks = [];
+  for (let raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    if (!line || !line.includes('=')) continue;
+    const key = line.slice(0, line.indexOf('=')).trim();
+    const val = line.slice(line.indexOf('=') + 1).trim();
+    if (key === 'enabled') cfg.enabled = val !== 'false';
+    else if (key === 'allow_until') cfg.allowUntil = val;
+    else if (key === 'message') cfg.message = val;
+    else if (key === 'block') { if (val.length >= 4 && !cfg.blocks.includes(val)) cfg.blocks.push(val); }
+    else if (key === 'allow') {
+      const m = val.match(/^([1-7](?:,[1-7])*) (\d{4}) (\d{4})$/);
+      if (!m) continue;
+      for (const d of m[1].split(',')) cfg.schedule[+d].push({ start: m[2], end: m[3] });
+    }
+  }
+  if (!cfg.blocks.length) cfg.blocks = [...DEFAULT_BLOCKS];
+  for (let d = 1; d <= 7; d++) cfg.schedule[d].sort((a, b) => a.start.localeCompare(b.start));
+  return cfg;
+}
+
+function serializeConfig(cfg) {
+  // 相同时间段的多天合并为一行，例如 allow=6,7 1000 1200
+  const groups = new Map();
+  for (let d = 1; d <= 7; d++) for (const r of cfg.schedule[d]) {
+    if (!/^\d{4}$/.test(r.start) || !/^\d{4}$/.test(r.end) || r.start >= r.end) continue;
+    const k = r.start + ' ' + r.end;
+    if (!groups.has(k)) groups.set(k, new Set());
+    groups.get(k).add(d);
+  }
+  const allowLines = [...groups.entries()]
+    .sort((a, b) => Math.min(...a[1]) - Math.min(...b[1]) || a[0].localeCompare(b[0]))
+    .map(([k, ds]) => `allow=${[...ds].sort().join(',')} ${k}`);
+  const msg = String(cfg.message || DEFAULT_MESSAGE).replace(/[\r\n]+/g, ' ');
+  return [
+    '# ===== GameGuard 游戏管控配置 =====',
+    '# 由 GameGuard 家长控制台生成；也可以手动编辑',
+    '',
+    '# 总开关：true = 开启管控，false = 暂停管控',
+    `enabled=${cfg.enabled ? 'true' : 'false'}`,
+    '',
+    '# 临时放行：在这个时间之前不管控（YYYY-MM-DD HH:MM）',
+    `allow_until=${cfg.allowUntil || ''}`,
+    '',
+    '# 允许玩的时间段：星期(1=周一…7=周日) 开始 结束',
+    ...allowLines,
+    '',
+    '# 要关闭的程序',
+    ...cfg.blocks.map(b => `block=${b}`),
+    '',
+    '# 关闭游戏时弹出的提示',
+    `message=${msg}`,
+    '',
+  ].join('\n');
+}
+
+const pad = n => String(n).padStart(2, '0');
+function fmtUntil(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function parseUntil(s) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+const toHHMM = t => t.replace(':', '');          // "10:00" -> "1000"
+const fromHHMM = t => t.slice(0, 2) + ':' + t.slice(2); // "1000" -> "10:00"
+
+// 计算某个时刻的状态（与 Mac 端判断顺序一致）
+function computeStatus(cfg, now = new Date()) {
+  if (!cfg.enabled) return { kind: 'pause', big: '管控已暂停', sub: '游戏不受限制，打开总开关恢复' };
+  const until = parseUntil(cfg.allowUntil);
+  if (until && now < until) return { kind: 'temp', big: '临时放行中', sub: `到 ${fromHHMM(cfg.allowUntil.slice(11).replace(':', ''))}${sameDay(until, now) ? '' : '（' + cfg.allowUntil.slice(5, 10) + '）'} 为止` };
+  const dow = ((now.getDay() + 6) % 7) + 1;   // 1=周一 … 7=周日
+  const hm = pad(now.getHours()) + pad(now.getMinutes());
+  const hit = cfg.schedule[dow].find(r => hm >= r.start && hm < r.end);
+  if (hit) return { kind: 'allow', big: '现在可以玩', sub: `今天 ${fromHHMM(hit.start)}–${fromHHMM(hit.end)}` };
+  return { kind: 'block', big: '现在禁止游戏', sub: nextWindowText(cfg, now) };
+}
+function sameDay(a, b) { return a.toDateString() === b.toDateString(); }
+function nextWindowText(cfg, now) {
+  const hm = pad(now.getHours()) + pad(now.getMinutes());
+  for (let i = 0; i < 7; i++) {
+    const d = ((now.getDay() + 6 + i) % 7) + 1;
+    const r = cfg.schedule[d].find(r => i > 0 || r.start > hm);
+    if (r) return `下次允许：${i === 0 ? '今天' : i === 1 ? '明天' : DAY_NAMES[d]} ${fromHHMM(r.start)}–${fromHHMM(r.end)}`;
+  }
+  return '没有设置允许时间段';
+}
+// ==LOGIC END==
+
+// ---------- 本地保存的连接信息 ----------
+const LS_KEY = 'gameguard-panel';
+function loadSettings() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || null; } catch { return null; } }
+function saveSettings(s) { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} }
+function clearSettings() { try { localStorage.removeItem(LS_KEY); } catch {} }
+function extractGistId(s) {
+  s = String(s || '').trim();
+  const m = s.match(/([0-9a-f]{20,})/i);
+  return m ? m[1] : '';
+}
+
+// ---------- GitHub API ----------
+async function gh(method, path, token, body) {
+  const res = await fetch('https://api.github.com' + path, {
+    method,
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    let msg = res.status + '';
+    try { msg += ' ' + (await res.json()).message; } catch {}
+    if (res.status === 401) msg = '令牌无效或已过期（401）';
+    if (res.status === 403) msg = '令牌没有 Gists 写入权限，或请求过于频繁（403）';
+    if (res.status === 404) msg = '找不到这个 Gist，请检查地址和令牌所属账号（404）';
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+// ---------- 状态 ----------
+let settings = loadSettings();
+let saved = null;     // 服务器上的配置（对象）
+let draft = null;     // 正在编辑的配置
+let gistMeta = null;
+
+const $ = id => document.getElementById(id);
+function toast(msg, ms = 2200) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+const isDirty = () => saved && draft && serializeConfig(saved) !== serializeConfig(draft);
+
+async function loadGist() {
+  $('statusBig').textContent = '读取中…'; $('statusSub').textContent = '';
+  $('status').className = 'status unknown';
+  try {
+    const g = await gh('GET', '/gists/' + settings.gistId, settings.token);
+    const f = g.files[settings.file];
+    if (!f) throw new Error(`Gist 里没有文件 ${settings.file}（现有：${Object.keys(g.files).join('、')}）`);
+    let content = f.content;
+    if (f.truncated) content = await (await fetch(f.raw_url, { cache: 'no-store' })).text();
+    gistMeta = { updated: g.updated_at, url: g.html_url, owner: g.owner && g.owner.login };
+    saved = parseConfig(content); draft = clone(saved);
+    render();
+  } catch (e) {
+    $('statusBig').textContent = '读取失败';
+    $('statusSub').textContent = e.message;
+    throw e;
+  }
+}
+
+async function saveGist(cfg, okMsg = '已保存') {
+  const content = serializeConfig(cfg);
+  const btns = document.querySelectorAll('button'); btns.forEach(b => b.disabled = true);
+  try {
+    const g = await gh('PATCH', '/gists/' + settings.gistId, settings.token, { files: { [settings.file]: { content } } });
+    gistMeta.updated = g.updated_at;
+    saved = parseConfig(content); draft = clone(saved);
+    render(); toast(okMsg);
+  } catch (e) {
+    toast('保存失败：' + e.message, 5000);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+// ---------- 渲染 ----------
+function render() {
+  const st = computeStatus(draft);
+  $('status').className = 'status ' + st.kind;
+  $('statusBig').textContent = st.big;
+  $('statusSub').textContent = st.sub;
+  $('swEnabled').checked = draft.enabled;
+  $('inMessage').value = draft.message;
+  renderDays(); renderBlocks();
+  $('metaInfo').textContent = gistMeta
+    ? `最后修改：${new Date(gistMeta.updated).toLocaleString()}　·　文件：${settings.file}`
+    : '';
+  if (gistMeta) $('lnkGist').href = gistMeta.url;
+  $('rawText').textContent = serializeConfig(draft);
+  $('saveBar').classList.toggle('show', isDirty());
+}
+
+function renderDays() {
+  const box = $('days'); box.innerHTML = '';
+  for (let d = 1; d <= 7; d++) {
+    const wrap = document.createElement('div'); wrap.className = 'day';
+    const head = document.createElement('div'); head.className = 'day-head';
+    head.innerHTML = `<span class="day-name">${DAY_NAMES[d]}</span>`;
+    const add = document.createElement('button'); add.className = 'ghost'; add.textContent = '+ 添加时间段';
+    add.onclick = () => {
+      const last = draft.schedule[d][draft.schedule[d].length - 1];
+      draft.schedule[d].push(last ? { ...last } : { start: '1000', end: '1100' });
+      render();
+    };
+    head.appendChild(add); wrap.appendChild(head);
+    if (!draft.schedule[d].length) {
+      const n = document.createElement('div'); n.className = 'none'; n.textContent = '全天不能玩';
+      wrap.appendChild(n);
+    }
+    draft.schedule[d].forEach((r, i) => {
+      const row = document.createElement('div'); row.className = 'range';
+      const s = document.createElement('input'); s.type = 'time'; s.value = fromHHMM(r.start); s.step = 300;
+      const e = document.createElement('input'); e.type = 'time'; e.value = fromHHMM(r.end); e.step = 300;
+      const dash = document.createElement('span'); dash.className = 'dash'; dash.textContent = '至';
+      const del = document.createElement('button'); del.className = 'ghost'; del.textContent = '删除';
+      s.onchange = () => { if (s.value) { r.start = toHHMM(s.value); render(); } };
+      e.onchange = () => { if (e.value) { r.end = toHHMM(e.value); render(); } };
+      del.onclick = () => { draft.schedule[d].splice(i, 1); render(); };
+      row.append(s, dash, e, del);
+      if (r.start >= r.end) {
+        const w = document.createElement('span'); w.className = 'muted'; w.style.color = 'var(--bad)'; w.textContent = '结束要晚于开始';
+        row.appendChild(w);
+      }
+      wrap.appendChild(row);
+    });
+    if (d === 1) {
+      const copy = document.createElement('button'); copy.className = 'ghost'; copy.textContent = '复制到周二至周五';
+      copy.onclick = () => { for (let k = 2; k <= 5; k++) draft.schedule[k] = clone(draft.schedule[1]); render(); toast('已复制，记得保存'); };
+      wrap.appendChild(copy);
+    }
+    if (d === 6) {
+      const copy = document.createElement('button'); copy.className = 'ghost'; copy.textContent = '复制到周日';
+      copy.onclick = () => { draft.schedule[7] = clone(draft.schedule[6]); render(); toast('已复制，记得保存'); };
+      wrap.appendChild(copy);
+    }
+    box.appendChild(wrap);
+  }
+}
+
+function renderBlocks() {
+  const box = $('blockChips'); box.innerHTML = '';
+  draft.blocks.forEach((b, i) => {
+    const c = document.createElement('span'); c.className = 'chip'; c.textContent = b;
+    const x = document.createElement('button'); x.textContent = '×'; x.title = '移除';
+    x.onclick = () => {
+      if (draft.blocks.length === 1) return toast('至少保留一个');
+      draft.blocks.splice(i, 1); render();
+    };
+    c.appendChild(x); box.appendChild(c);
+  });
+}
+
+// ---------- 事件 ----------
+function untilFromMinutes(mins) {
+  const base = (() => { const u = parseUntil(saved.allowUntil); return u && u > new Date() ? u : new Date(); })();
+  return fmtUntil(new Date(base.getTime() + mins * 60000));
+}
+
+document.querySelectorAll('[data-mins]').forEach(btn => btn.onclick = () => {
+  const cfg = clone(saved);
+  if (btn.dataset.mins === 'today') {
+    const d = new Date(); d.setHours(23, 59, 0, 0); cfg.allowUntil = fmtUntil(d);
+  } else {
+    cfg.allowUntil = untilFromMinutes(+btn.dataset.mins);
+  }
+  saveGist(cfg, '已放行到 ' + cfg.allowUntil.slice(11));
+});
+$('btnCustomUntil').onclick = () => {
+  $('customUntilRow').classList.toggle('hidden');
+  const d = new Date(Date.now() + 3600000); $('inUntil').value = pad(d.getHours()) + ':' + pad(d.getMinutes());
+};
+$('btnApplyUntil').onclick = () => {
+  const v = $('inUntil').value; if (!v) return;
+  const [h, m] = v.split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0);
+  if (d <= new Date()) d.setDate(d.getDate() + 1);   // 选的时间已过，则视为明天
+  const cfg = clone(saved); cfg.allowUntil = fmtUntil(d);
+  $('customUntilRow').classList.add('hidden');
+  saveGist(cfg, '已放行到 ' + cfg.allowUntil);
+};
+$('btnEndAllow').onclick = () => {
+  if (!saved.allowUntil) return toast('当前没有临时放行');
+  const cfg = clone(saved); cfg.allowUntil = ''; saveGist(cfg, '已结束临时放行');
+};
+$('swEnabled').onchange = e => {
+  const cfg = clone(saved); cfg.enabled = e.target.checked;
+  saveGist(cfg, cfg.enabled ? '管控已开启' : '管控已暂停');
+};
+$('inMessage').oninput = e => { draft.message = e.target.value; $('saveBar').classList.toggle('show', isDirty()); };
+$('btnAddBlock').onclick = () => {
+  const v = $('inBlock').value.trim();
+  if (v.length < 4) return toast('关键字至少 4 个字符，避免误关其他程序');
+  if (!draft.blocks.includes(v)) draft.blocks.push(v);
+  $('inBlock').value = ''; render();
+};
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  for (const p of PRESETS[b.dataset.preset]) if (!draft.blocks.includes(p)) draft.blocks.push(p);
+  render();
+});
+$('btnSave').onclick = () => {
+  for (let d = 1; d <= 7; d++) if (draft.schedule[d].some(r => r.start >= r.end))
+    return toast(DAY_NAMES[d] + ' 有时间段的结束时间早于开始时间');
+  saveGist(draft);
+};
+$('btnDiscard').onclick = () => { draft = clone(saved); render(); };
+$('btnReload').onclick = () => { if (settings) loadGist().catch(() => {}); };
+$('btnShowText').onclick = () => $('rawText').classList.toggle('hidden');
+$('btnSettings').onclick = () => showSetup(true);
+$('btnForget').onclick = () => {
+  if (!confirm('清除这台设备上保存的 Gist 地址和令牌？')) return;
+  clearSettings(); settings = null; showSetup(false);
+};
+window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+setInterval(() => { if (draft) { const st = computeStatus(draft); $('statusBig').textContent = st.big; $('statusSub').textContent = st.sub; $('status').className = 'status ' + st.kind; } }, 30000);
+
+function showSetup(cancellable) {
+  $('app').classList.add('hidden'); $('setupCard').classList.remove('hidden');
+  $('btnCancelSetup').classList.toggle('hidden', !cancellable);
+  if (settings) { $('inGist').value = settings.gistId; $('inFile').value = settings.file; $('inToken').value = ''; $('inToken').placeholder = '留空则继续使用已保存的令牌'; }
+}
+$('btnCancelSetup').onclick = () => { $('setupCard').classList.add('hidden'); $('app').classList.remove('hidden'); };
+$('btnConnect').onclick = async () => {
+  const gistId = extractGistId($('inGist').value);
+  const file = $('inFile').value.trim() || 'gameguard.txt';
+  const token = $('inToken').value.trim() || (settings && settings.token) || '';
+  if (!gistId) return toast('请填写 Gist 地址或 ID');
+  if (!token) return toast('请填写 GitHub 访问令牌');
+  const prev = settings; settings = { gistId, file, token };
+  $('btnConnect').disabled = true;
+  try {
+    await loadGist();
+    saveSettings(settings);
+    $('setupCard').classList.add('hidden'); $('app').classList.remove('hidden');
+    toast('连接成功');
+  } catch (e) {
+    settings = prev; toast('连接失败：' + e.message, 5000);
+  } finally { $('btnConnect').disabled = false; }
+};
+
+// 支持通过链接预填 Gist：index.html#gist=xxxx&file=gameguard.txt
+(function init() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('gist')) $('inGist').value = h.get('gist');
+  if (h.get('file')) $('inFile').value = h.get('file');
+  if (settings) {
+    $('app').classList.remove('hidden');
+    loadGist().catch(() => {});
+  } else {
+    showSetup(false);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# GameGuard 网络配置（放到网上，Mac 每 5 分钟读取一次）
+# 每行一个设置，# 后面是注释
+
+# 总开关：false = 暂停管控（随便玩）
+enabled=true
+
+# 临时放行：在这个时间之前不管控（格式 YYYY-MM-DD HH:MM，Mac 本地时间）
+# 想临时多给一小时，就把时间改到一小时后；不用时留空或删掉这行
+allow_until=
+
+# 允许玩的时间段：星期 开始 结束（星期 1=周一 … 7=周日，可用逗号写多天）
+allow=6,7 1000 1200
+allow=5 1900 2030
+
+# 要结束的程序（匹配进程完整命令行，不区分大小写）
+# 写了 block 行就只用这里的列表；一行都不写则使用内置默认列表
+block=RobloxPlayer
+block=RobloxStudio
+block=Roblox.app
+block=Minecraft.app
+block=minecraft-launcher
+block=net.minecraft
+block=Minecraft Education
+
+# 结束游戏时弹出的提示
+message=现在不是游戏时间，游戏已被关闭。
