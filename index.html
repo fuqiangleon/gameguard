@@ -138,6 +138,20 @@
   .linkbtn { background: none; border: none; color: var(--muted); font-size: 14px; text-decoration: underline; min-height: 40px; }
 
   pre { white-space: pre-wrap; word-break: break-all; background: var(--bg); border-radius: 12px; padding: 12px; font-size: 13px; margin: 10px 0 0; }
+  .help { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .help-body { max-width: 560px; margin: 0 auto; padding: 4px 16px calc(env(safe-area-inset-bottom) + 40px); }
+  .help details { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 16px; margin-bottom: 10px; }
+  .help summary { cursor: pointer; font-weight: 650; padding: 15px 0; list-style: none; display: flex; justify-content: space-between; }
+  .help summary::-webkit-details-marker { display: none; }
+  .help summary::after { content: "›"; color: var(--muted); transition: transform .2s; }
+  .help details[open] summary::after { transform: rotate(90deg); }
+  .help details > :not(summary) { margin-top: 0; }
+  .help details[open] { padding-bottom: 14px; }
+  .help ul { padding-left: 20px; margin: 0; }
+  .help li { margin-bottom: 8px; font-size: 15px; }
+  .help p { font-size: 15px; }
+  .help code { background: var(--bg); border-radius: 6px; padding: 1px 6px; font-size: 13px; word-break: break-all; }
+  .help pre { margin: 8px 0; }
   .hidden { display: none !important; }
   .tab { display: none; }
   .tab.active { display: block; }
@@ -180,6 +194,105 @@
       <button class="primary block" id="btnSetup">完成设置</button>
       <p class="hint" style="text-align:center">密码用于加密保存令牌，只存在这台设备上。忘记密码只能清除后重新设置。</p>
     </div>
+    <p style="text-align:center;margin-top:8px"><button class="linkbtn" data-help>使用说明</button></p>
+  </div>
+</div>
+
+<!-- ================= 使用说明 ================= -->
+<div id="helpView" class="help hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="topbar">
+    <h1 id="helpTitle">使用说明</h1>
+    <button class="ghost" id="btnCloseHelp">关闭</button>
+  </div>
+  <div class="help-body">
+    <p class="muted" style="margin-top:0">GameGuard 由两部分组成：孩子 Mac 上的<strong>管控程序</strong>，和你手机上的这个<strong>控制台</strong>。你在控制台改的设置会保存到 GitHub Gist，Mac 每 5 分钟读取一次。</p>
+
+    <details open>
+      <summary>它会做什么</summary>
+      <ul>
+        <li>在<b>不允许的时间</b>：每分钟检查一次，自动关闭“管控的程序”里的游戏和 App，并屏蔽“屏蔽网站”里的网站。</li>
+        <li>在<b>允许的时间</b>、<b>临时放行</b>期间或<b>总开关关闭</b>时：不做任何限制，网站自动恢复。</li>
+        <li>关闭游戏时，孩子的屏幕右上角会弹出提示。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>多久生效？</summary>
+      <p>点击保存后，<b>一般 5–10 分钟内</b>在孩子的 Mac 上生效（GitHub 的缓存加上 Mac 每 5 分钟读取一次）。</p>
+      <p>想立即生效，在孩子的 Mac 上用管理员账户运行：</p>
+      <pre>sudo rm -f /var/db/gameguard/config.cache && sudo /usr/local/bin/gameguard.sh</pre>
+    </details>
+
+    <details>
+      <summary>临时放行</summary>
+      <ul>
+        <li><b>+30 分钟 / +1 小时 / +2 小时</b>：从现在开始放行。如果已经在放行中，会在原来的截止时间上继续延长。</li>
+        <li><b>今天不限</b>：放行到今晚 23:59。</li>
+        <li><b>到指定时间</b>：选一个时间；如果选的时间已经过了，会放行到明天的这个时间。</li>
+        <li><b>结束放行</b>：马上恢复按时间表管控。</li>
+        <li>放行到期后自动恢复管控，不需要手动结束。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>设置每周时间表</summary>
+      <ul>
+        <li>在“时间表”里点某一天展开，点“+ 添加时间段”，选开始和结束时间。一天可以有多个时间段。</li>
+        <li>没有时间段的那天就是全天不能玩。</li>
+        <li>工作日设好一天后，可以点“复制到周一至周五”；周末同理。</li>
+        <li>改完后点底部黑色条上的<b>保存</b>，不保存不会生效。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>管控程序和屏蔽网站</summary>
+      <ul>
+        <li><b>管控的程序</b>：填进程名里的关键字（至少 4 个字符），比如 <code>Discord</code>。常用的可以点下面的快捷按钮添加。</li>
+        <li><b>屏蔽网站</b>：填主域名，比如 <code>youtube.com</code>，会同时屏蔽 <code>www.youtube.com</code>。其他子域名（如 <code>m.youtube.com</code>）需要单独添加，快捷按钮会一起加上。</li>
+        <li>网站和游戏共用同一个时间表。</li>
+        <li>网站被屏蔽后，<b>浏览器需要完全退出再打开</b>才会立即生效；已经打开的网页可能要刷新。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>网站屏蔽不生效怎么办</summary>
+      <ul>
+        <li>先看首页状态：如果是“临时放行中”或“现在可以玩”，网站本来就不会被屏蔽。</li>
+        <li>在 Mac 上运行 <code>sudo /usr/local/bin/gameguard.sh --show</code>，确认能看到 <code>site=</code> 和“网站屏蔽：生效中”。</li>
+        <li>运行 <code>grep 0.0.0.0 /etc/hosts</code>，确认网站已经写入。</li>
+        <li><b>Safari + iCloud 专用代理</b>会绕过屏蔽：在孩子账户的 系统设置 → Apple 账户 → iCloud → 专用代理 里关闭。</li>
+        <li>孩子如果使用 VPN 或代理，也可能绕过网站屏蔽。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>密码和安全</summary>
+      <ul>
+        <li>控制台的密码只存在你这台手机上，用来加密保存 GitHub 令牌。别人打开这个网页，没有密码什么都改不了。</li>
+        <li>点右上角“锁定”或关闭标签页后，需要重新输入密码。</li>
+        <li><b>忘记密码</b>：在解锁页点“忘记密码”，清除后重新填写 Gist 地址和令牌（令牌找不到就在 GitHub 重新生成一个）。</li>
+        <li>不要在孩子的设备上登录这个控制台。</li>
+        <li>可以在 Safari 里点“分享 → 添加到主屏幕”，像 App 一样使用。</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>孩子的 Mac 需要注意</summary>
+      <ul>
+        <li>孩子的账户必须是<b>标准用户</b>（系统设置 → 用户与群组），不能是管理员，否则可以自己卸载管控程序。</li>
+        <li>管控对这台 Mac 上<b>所有账户</b>都有效（包括你自己的账户）。</li>
+        <li>查看记录：<code>sudo tail -20 /var/log/gameguard.log</code></li>
+        <li>查看当前状态：<code>sudo /usr/local/bin/gameguard.sh --show</code></li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>更新 Mac 上的管控程序</summary>
+      <p>只有管控程序本身增加了新功能时才需要更新；平时在控制台改设置不需要。用管理员账户在终端运行：</p>
+      <pre>cd /tmp && curl -fsSL -o gg.zip https://github.com/fuqiangleon/gameguard/archive/refs/heads/main.zip
+unzip -o -q gg.zip && cd gameguard-main/mac && sudo ./install.sh</pre>
+      <p>卸载：在同一个目录运行 <code>sudo ./install.sh uninstall</code>。</p>
+    </details>
   </div>
 </div>
 
@@ -188,6 +301,7 @@
   <div class="topbar">
     <h1 id="pageTitle">GameGuard</h1>
     <div class="row nowrap">
+      <button class="ghost" data-help aria-label="使用说明">帮助</button>
       <button class="ghost" id="btnReload" aria-label="刷新">刷新</button>
       <button class="ghost" id="btnLock" aria-label="锁定">锁定</button>
     </div>
@@ -770,6 +884,11 @@ $('btnSetup').onclick = async () => {
   finally { $('btnSetup').disabled = false; }
 };
 $('inPw2').onkeydown = e => { if (e.key === 'Enter') $('btnSetup').click(); };
+
+// ================= 使用说明 =================
+document.querySelectorAll('[data-help]').forEach(b => b.onclick = () => { $('helpView').classList.remove('hidden'); $('helpView').scrollTop = 0; });
+$('btnCloseHelp').onclick = () => $('helpView').classList.add('hidden');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('helpView').classList.add('hidden'); });
 
 // ================= 启动 =================
 (function init() {
