@@ -8,9 +8,17 @@ enabled=true
 # 想临时多给一小时，就把时间改到一小时后；不用时留空或删掉这行
 allow_until=
 
+# 只放行程序 / 只放行网站（可选，格式同上）
+# app_allow_until=
+# site_allow_until=
+
 # 允许玩的时间段：星期 开始 结束（星期 1=周一 … 7=周日，可用逗号写多天）
 allow=6,7 1000 1200
 allow=5 1900 2030
+
+# 网站单独的时间表（可选）：写 separate 后网站按 site_allow，否则跟上面的 allow 一样
+# site_schedule=separate
+# site_allow=1,2,3,4,5 1900 1930
 
 # 要结束的程序（匹配进程完整命令行，不区分大小写）
 # 写了 block 行就只用这里的列表；一行都不写则使用内置默认列表

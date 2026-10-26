@@ -87,8 +87,12 @@ if [ -f "$CACHE" ]; then CONFIG=$(cat "$CACHE"); SRC="网络配置（缓存）";
 # ---------- 2. 解析配置（只读取已知字段，不执行任何内容） ----------
 ENABLED=true
 MESSAGE="现在不是游戏时间，游戏已被关闭。"
-ALLOW_UNTIL=""
+ALLOW_UNTIL=""          # 程序和网站一起放行
+APP_ALLOW_UNTIL=""      # 只放行程序
+SITE_ALLOW_UNTIL=""     # 只放行网站
+SITE_SCHEDULE=same      # same = 网站跟程序同一个时间表；separate = 网站用 site_allow
 ALLOWED=()
+SITE_ALLOWED_WIN=()
 BLOCKS=()
 SITES=()
 while IFS= read -r line || [ -n "$line" ]; do
@@ -100,7 +104,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     enabled)     ENABLED="$val" ;;
     message)     MESSAGE="$val" ;;
     allow_until) ALLOW_UNTIL="$val" ;;
+    app_allow_until)  APP_ALLOW_UNTIL="$val" ;;
+    site_allow_until) SITE_ALLOW_UNTIL="$val" ;;
+    site_schedule)    [ "$val" = "separate" ] && SITE_SCHEDULE=separate ;;
     allow)       echo "$val" | grep -Eq '^[1-7](,[1-7])* [0-9]{4} [0-9]{4}$' && ALLOWED+=("$val") ;;
+    site_allow)  echo "$val" | grep -Eq '^[1-7](,[1-7])* [0-9]{4} [0-9]{4}$' && SITE_ALLOWED_WIN+=("$val") ;;
     block)       [ ${#val} -ge 4 ] && BLOCKS+=("$val") ;;  # 太短的规则可能误杀，忽略
     site)        val=$(echo "$val" | tr 'A-Z' 'a-z' | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's/^\*\.//' -e 's/^www\.//')
                  echo "$val" | grep -Eq '^([a-z0-9-]+\.)+[a-z]{2,}$' && SITES+=("$val") ;;
@@ -112,35 +120,60 @@ if [ "$MODE" = "show" ]; then
   echo "配置来源：$SRC   ${CONFIG_URL:+($CONFIG_URL)}"
   echo "enabled=$ENABLED"
   echo "allow_until=${ALLOW_UNTIL:-（无）}"
+  [ -n "$APP_ALLOW_UNTIL" ] && echo "app_allow_until=$APP_ALLOW_UNTIL"
+  [ -n "$SITE_ALLOW_UNTIL" ] && echo "site_allow_until=$SITE_ALLOW_UNTIL"
   for a in "${ALLOWED[@]}"; do echo "allow=$a"; done
+  if [ "$SITE_SCHEDULE" = "separate" ]; then
+    echo "site_schedule=separate"
+    for a in "${SITE_ALLOWED_WIN[@]}"; do echo "site_allow=$a"; done
+  fi
   for b in "${BLOCKS[@]}"; do echo "block=$b"; done
   for s in "${SITES[@]}"; do echo "site=$s"; done
   echo "message=$MESSAGE"
 fi
 
-# ---------- 3. 判断现在是否允许 ----------
-NOW_ALLOWED=0
-STATE_TEXT="当前禁止游戏"
-if [ "$ENABLED" = "false" ]; then
-  NOW_ALLOWED=1; STATE_TEXT="管控已暂停"
-fi
-if [ $NOW_ALLOWED -eq 0 ] && [ -n "$ALLOW_UNTIL" ]; then
-  until_ts=$(date -j -f "%Y-%m-%d %H:%M" "$ALLOW_UNTIL" +%s 2>/dev/null)
-  if [ -n "$until_ts" ] && [ "$(date +%s)" -lt "$until_ts" ]; then
-    NOW_ALLOWED=1; STATE_TEXT="临时放行中，直到 ${ALLOW_UNTIL}"
-  fi
-fi
-if [ $NOW_ALLOWED -eq 0 ]; then
-  dow=$(date +%u); now=$((10#$(date +%H%M)))
-  for w in "${ALLOWED[@]}"; do
+# ---------- 3. 判断现在是否允许（程序和网站分别判断） ----------
+NOW_TS=$(date +%s); DOW=$(date +%u); NOW_HM=$((10#$(date +%H%M)))
+until_active() {   # $1 = "YYYY-MM-DD HH:MM"，还没到这个时间就返回成功
+  [ -n "$1" ] || return 1
+  local t; t=$(date -j -f "%Y-%m-%d %H:%M" "$1" +%s 2>/dev/null)
+  [ -n "$t" ] && [ "$NOW_TS" -lt "$t" ]
+}
+HIT_WINDOW=""
+in_windows() {     # 参数是若干 "星期 开始 结束"，现在在其中任一段内就返回成功
+  local w days s e
+  for w in "$@"; do
     read -r days s e <<< "$w"
-    case ",$days," in *",$dow,"*)
-      if [ "$now" -ge $((10#$s)) ] && [ "$now" -lt $((10#$e)) ]; then
-        NOW_ALLOWED=1; STATE_TEXT="当前在允许时间段内（${w}）"; break
-      fi ;;
+    case ",$days," in *",$DOW,"*)
+      if [ "$NOW_HM" -ge $((10#$s)) ] && [ "$NOW_HM" -lt $((10#$e)) ]; then HIT_WINDOW="$w"; return 0; fi ;;
     esac
   done
+  return 1
+}
+
+APP_ALLOWED=0; APP_TEXT="受限"
+SITE_ALLOWED=0; SITE_TEXT="受限"
+if [ "$ENABLED" = "false" ]; then
+  APP_ALLOWED=1; APP_TEXT="管控已暂停"; SITE_ALLOWED=1; SITE_TEXT="管控已暂停"
+else
+  if until_active "$ALLOW_UNTIL"; then
+    APP_ALLOWED=1; APP_TEXT="临时放行到 $ALLOW_UNTIL"
+  elif until_active "$APP_ALLOW_UNTIL"; then
+    APP_ALLOWED=1; APP_TEXT="临时放行到 $APP_ALLOW_UNTIL"
+  elif in_windows "${ALLOWED[@]}"; then
+    APP_ALLOWED=1; APP_TEXT="开放时间（${HIT_WINDOW}）"
+  fi
+  if until_active "$ALLOW_UNTIL"; then
+    SITE_ALLOWED=1; SITE_TEXT="临时放行到 $ALLOW_UNTIL"
+  elif until_active "$SITE_ALLOW_UNTIL"; then
+    SITE_ALLOWED=1; SITE_TEXT="临时放行到 $SITE_ALLOW_UNTIL"
+  elif [ "$SITE_SCHEDULE" = "separate" ]; then
+    in_windows "${SITE_ALLOWED_WIN[@]}" && { SITE_ALLOWED=1; SITE_TEXT="开放时间（${HIT_WINDOW}，网站时间表）"; }
+  elif in_windows "${ALLOWED[@]}"; then
+    SITE_ALLOWED=1; SITE_TEXT="开放时间（${HIT_WINDOW}）"
+  fi
 fi
+NOW_ALLOWED=$SITE_ALLOWED    # 下面的网站屏蔽部分按网站的状态处理
 
 # ---------- 4. 网站屏蔽：禁止时段写入 /etc/hosts，允许时段移除 ----------
 HOSTS=/etc/hosts
@@ -190,7 +223,8 @@ sync_resolvers() {
 
 if [ "$MODE" = "show" ]; then
   if [ -n "$wanted_block" ]; then echo "→ 网站屏蔽：生效中（${#SITES[@]} 个网站）"; else echo "→ 网站屏蔽：未生效"; fi
-  echo "→ ${STATE_TEXT}"
+  echo "→ 程序：${APP_TEXT}"
+  echo "→ 网站：${SITE_TEXT}"
   exit 0
 fi
 
@@ -238,9 +272,9 @@ if [ "$MODE" = "run" ] && [ ${#SITES[@]} -gt 0 ]; then
   fi
 fi
 
-[ $NOW_ALLOWED -eq 1 ] && exit 0
+[ $APP_ALLOWED -eq 1 ] && exit 0
 
-# ---------- 4. 查找并结束进程 ----------
+# ---------- 5. 查找并结束进程 ----------
 killed=0
 for pat in "${BLOCKS[@]}"; do
   for pid in $(pgrep -if -- "$pat"); do
