@@ -67,7 +67,8 @@
   /* 状态卡 */
   .status { border-radius: var(--radius); padding: 18px; margin-bottom: 12px; }
   .status .big { font-size: 24px; font-weight: 750; letter-spacing: .5px; }
-  .status .sub { font-size: 15px; margin-top: 4px; white-space: pre-line; }
+  .status .sub { font-size: 15px; margin-top: 4px; }
+  .status .scope { font-size: 13px; margin-top: 8px; opacity: .85; }
   .status.block { background: var(--bad-soft); color: var(--bad); }
   .status.allow { background: var(--ok-soft); color: var(--ok); }
   .status.temp  { background: var(--warn-soft); color: var(--warn); }
@@ -153,9 +154,6 @@
   .help code { background: var(--bg); border-radius: 6px; padding: 1px 6px; font-size: 13px; word-break: break-all; }
   .help pre { margin: 8px 0; }
   .hidden { display: none !important; }
-  .seg { display: flex; gap: 4px; background: var(--bg); border-radius: 12px; padding: 4px; margin-bottom: 12px; }
-  .seg button { flex: 1; border: 0; background: transparent; padding: 8px 4px; border-radius: 9px; font-size: 14px; white-space: nowrap; min-height: 0; box-shadow: none; }
-  .seg button.on { background: var(--card, #fff); font-weight: 650; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   .tab { display: none; }
   .tab.active { display: block; }
   @media (max-width: 350px) { .quick { grid-template-columns: repeat(2, 1fr); } }
@@ -235,11 +233,10 @@
     <details>
       <summary>临时放行</summary>
       <ul>
-        <li>先在上方选<b>放行对象</b>：「程序和网站」「只放程序」（比如可以玩游戏但不能看 YouTube）或「只放网站」（比如可以上网查资料但不能玩游戏）。</li>
         <li><b>+30 分钟 / +1 小时 / +2 小时</b>：从现在开始放行。如果已经在放行中，会在原来的截止时间上继续延长。</li>
         <li><b>今天不限</b>：放行到今晚 23:59。</li>
         <li><b>到指定时间</b>：选一个时间；如果选的时间已经过了，会放行到明天的这个时间。</li>
-        <li><b>结束放行</b>：结束所选对象的放行，马上恢复按时间表管控。</li>
+        <li><b>结束放行</b>：马上恢复按时间表管控。</li>
         <li>放行到期后自动恢复管控，不需要手动结束。</li>
       </ul>
     </details>
@@ -249,7 +246,6 @@
       <ul>
         <li>在“时间表”里点某一天展开，点“+ 添加时间段”，选开始和结束时间。一天可以有多个时间段。</li>
         <li>没有时间段的那天就是全天受限（程序关闭、网站屏蔽）。</li>
-        <li>时间表分「程序」和「网站」两页。默认网站跟程序用同一个时间表；在「网站」页打开「网站使用单独的时间表」，就可以给网站设不同的时间。</li>
         <li>工作日设好一天后，可以点“复制到周一至周五”；周末同理。</li>
         <li>改完后点底部黑色条上的<b>保存</b>，不保存不会生效。</li>
       </ul>
@@ -336,15 +332,11 @@
       <div class="status unknown" id="status">
         <div class="big" id="statusBig">读取中…</div>
         <div class="sub" id="statusSub"></div>
+        <div class="scope" id="statusScope"></div>
       </div>
 
       <div class="card">
         <h2>临时放行</h2>
-        <div class="seg" id="allowTarget" role="tablist">
-          <button data-target="both" class="on">程序和网站</button>
-          <button data-target="app">只放程序</button>
-          <button data-target="site">只放网站</button>
-        </div>
         <div class="quick">
           <button data-mins="30">+30 分钟</button>
           <button data-mins="60">+1 小时</button>
@@ -357,7 +349,7 @@
           <input type="time" id="inUntil">
           <button class="primary" id="btnApplyUntil">确定</button>
         </div>
-        <p class="hint">先选放行对象，再点时间。点击立即保存，孩子电脑一般 1–2 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
+        <p class="hint">放行期间程序和网站都不受限。点击立即保存，孩子电脑一般 1–2 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
       </div>
 
       <div class="card">
@@ -372,7 +364,7 @@
 
       <div class="card">
         <h2>今天的开放时间</h2>
-        <div id="todaySum" class="muted" style="white-space:pre-line"></div>
+        <div id="todaySum" class="muted"></div>
       </div>
     </section>
 
@@ -380,18 +372,7 @@
     <section class="tab" data-tab="time">
       <div class="card">
         <h2>每周开放时间</h2>
-        <div class="seg" id="schedTarget">
-          <button data-sched="app" class="on">程序</button>
-          <button data-sched="site">网站</button>
-        </div>
-        <div id="siteSepRow" class="spread hidden" style="margin-bottom:8px">
-          <div>
-            <div style="font-weight:600">网站使用单独的时间表</div>
-            <div class="muted" id="siteSepHint"></div>
-          </div>
-          <label class="switch"><input type="checkbox" id="swSiteSep" aria-label="网站使用单独的时间表"><span class="track"></span><span class="knob"></span></label>
-        </div>
-        <p class="muted" style="margin:-4px 0 4px" id="schedHint"></p>
+        <p class="muted" style="margin:-4px 0 4px">点某一天展开修改。不在这些时间内，游戏会被关闭、网站会被屏蔽。</p>
         <div id="days"></div>
       </div>
     </section>
@@ -528,9 +509,7 @@ function normalizeSite(s) {
 }
 function emptyConfig() {
   const schedule = {}; for (let d = 1; d <= 7; d++) schedule[d] = [];
-  const siteSchedule = {}; for (let d = 1; d <= 7; d++) siteSchedule[d] = [];
-  return { enabled: true, allowUntil: '', appUntil: '', siteUntil: '', schedule, siteSeparate: false, siteSchedule,
-           blocks: [...DEFAULT_BLOCKS], sites: [], message: DEFAULT_MESSAGE };
+  return { enabled: true, allowUntil: '', schedule, blocks: [...DEFAULT_BLOCKS], sites: [], message: DEFAULT_MESSAGE };
 }
 function parseConfig(text) {
   const cfg = emptyConfig(); cfg.blocks = [];
@@ -541,43 +520,30 @@ function parseConfig(text) {
     const val = line.slice(line.indexOf('=') + 1).trim();
     if (key === 'enabled') cfg.enabled = val !== 'false';
     else if (key === 'allow_until') cfg.allowUntil = val;
-    else if (key === 'app_allow_until') cfg.appUntil = val;
-    else if (key === 'site_allow_until') cfg.siteUntil = val;
-    else if (key === 'site_schedule') cfg.siteSeparate = val === 'separate';
     else if (key === 'message') cfg.message = val;
     else if (key === 'block') { if (val.length >= 4 && !cfg.blocks.includes(val)) cfg.blocks.push(val); }
     else if (key === 'site') { const s = normalizeSite(val); if (s && !cfg.sites.includes(s)) cfg.sites.push(s); }
-    else if (key === 'allow' || key === 'site_allow') {
+    else if (key === 'allow') {
       const m = val.match(/^([1-7](?:,[1-7])*) (\d{4}) (\d{4})$/);
       if (!m) continue;
-      const sch = key === 'allow' ? cfg.schedule : cfg.siteSchedule;
-      for (const d of m[1].split(',')) sch[+d].push({ start: m[2], end: m[3] });
+      for (const d of m[1].split(',')) cfg.schedule[+d].push({ start: m[2], end: m[3] });
     }
   }
   if (!cfg.blocks.length) cfg.blocks = [...DEFAULT_BLOCKS];
-  for (let d = 1; d <= 7; d++) for (const sch of [cfg.schedule, cfg.siteSchedule]) sch[d].sort((a, b) => a.start.localeCompare(b.start));
-  // 旧的“一起放行”拆成程序、网站各自的放行时间，方便分别结束
-  if (cfg.allowUntil) {
-    const u = parseUntil(cfg.allowUntil);
-    for (const k of ['appUntil', 'siteUntil']) { const o = parseUntil(cfg[k]); if (!o || (u && u > o)) cfg[k] = cfg.allowUntil; }
-    cfg.allowUntil = '';
-  }
+  for (let d = 1; d <= 7; d++) cfg.schedule[d].sort((a, b) => a.start.localeCompare(b.start));
   return cfg;
 }
-function scheduleLines(sch, key) {
+function serializeConfig(cfg) {
   const groups = new Map();
-  for (let d = 1; d <= 7; d++) for (const r of sch[d]) {
+  for (let d = 1; d <= 7; d++) for (const r of cfg.schedule[d]) {
     if (!/^\d{4}$/.test(r.start) || !/^\d{4}$/.test(r.end) || r.start >= r.end) continue;
     const k = r.start + ' ' + r.end;
     if (!groups.has(k)) groups.set(k, new Set());
     groups.get(k).add(d);
   }
-  return [...groups.entries()]
+  const allowLines = [...groups.entries()]
     .sort((a, b) => Math.min(...a[1]) - Math.min(...b[1]) || a[0].localeCompare(b[0]))
-    .map(([k, ds]) => `${key}=${[...ds].sort().join(',')} ${k}`);
-}
-function serializeConfig(cfg) {
-  const allowLines = scheduleLines(cfg.schedule, 'allow');
+    .map(([k, ds]) => `allow=${[...ds].sort().join(',')} ${k}`);
   const msg = String(cfg.message || DEFAULT_MESSAGE).replace(/[\r\n]+/g, ' ');
   return [
     '# ===== GameGuard 游戏管控配置 =====',
@@ -586,17 +552,11 @@ function serializeConfig(cfg) {
     '# 总开关：true = 开启管控，false = 暂停管控',
     `enabled=${cfg.enabled ? 'true' : 'false'}`,
     '',
-    '# 临时放行（YYYY-MM-DD HH:MM）：allow_until 程序和网站一起；app_ 只放程序；site_ 只放网站',
+    '# 临时放行：在这个时间之前不管控（YYYY-MM-DD HH:MM）',
     `allow_until=${cfg.allowUntil || ''}`,
-    `app_allow_until=${cfg.appUntil || ''}`,
-    `site_allow_until=${cfg.siteUntil || ''}`,
     '',
-    '# 程序的开放时间段：星期(1=周一…7=周日) 开始 结束',
+    '# 允许玩的时间段：星期(1=周一…7=周日) 开始 结束',
     ...allowLines,
-    '',
-    '# 网站时间表：same = 跟程序一样；separate = 使用下面的 site_allow',
-    `site_schedule=${cfg.siteSeparate ? 'separate' : 'same'}`,
-    ...(cfg.siteSeparate ? scheduleLines(cfg.siteSchedule, 'site_allow') : []),
     '',
     '# 要关闭的程序',
     ...cfg.blocks.map(b => `block=${b}`),
@@ -618,36 +578,26 @@ function parseUntil(s) {
 const toHHMM = t => t.replace(':', '');
 const fromHHMM = t => t.slice(0, 2) + ':' + t.slice(2);
 const dowOf = d => ((d.getDay() + 6) % 7) + 1;   // 1=周一 … 7=周日
-function stateOf(cfg, kind, now = new Date()) {   // kind = 'app' | 'site'
-  if (!cfg.enabled) return { open: true, text: '管控已暂停' };
-  const until = parseUntil(kind === 'app' ? cfg.appUntil : cfg.siteUntil);
-  if (until && now < until) {
-    const v = kind === 'app' ? cfg.appUntil : cfg.siteUntil;
-    const sameDay = until.toDateString() === now.toDateString();
-    return { open: true, temp: true, text: `临时放行到 ${sameDay ? '' : v.slice(5, 10) + ' '}${v.slice(11)}` };
-  }
-  const sch = kind === 'site' && cfg.siteSeparate ? cfg.siteSchedule : cfg.schedule;
-  const hm = pad(now.getHours()) + pad(now.getMinutes());
-  const hit = sch[dowOf(now)].find(r => hm >= r.start && hm < r.end);
-  if (hit) return { open: true, text: `开放到 ${fromHHMM(hit.end)}` };
-  return { open: false, text: nextWindowText(sch, now) };
-}
 function computeStatus(cfg, now = new Date()) {
-  const a = stateOf(cfg, 'app', now), w = stateOf(cfg, 'site', now);
-  const lines = `程序：${a.open ? '可以打开' : '会被关闭'} · ${a.text}\n网站：${w.open ? '可以访问' : '已屏蔽'} · ${w.text}`;
-  if (!cfg.enabled) return { kind: 'pause', big: '管控已暂停', sub: '总开关已关闭，程序和网站都不受限' };
-  if (a.open && w.open) return { kind: a.temp || w.temp ? 'temp' : 'allow', big: a.temp || w.temp ? '临时放行中' : '现在开放', sub: lines };
-  if (!a.open && !w.open) return { kind: 'block', big: '现在受限', sub: lines };
-  return { kind: 'temp', big: a.open ? '程序开放，网站受限' : '网站开放，程序受限', sub: lines };
-}
-function nextWindowText(sch, now) {
-  const hm = pad(now.getHours()) + pad(now.getMinutes());
-  for (let i = 0; i <= 7; i++) {
-    const d = ((now.getDay() + 6 + i) % 7) + 1;
-    const r = sch[d].find(r => i > 0 || r.start > hm);
-    if (r) return `下次开放 ${i === 0 ? '今天' : i === 1 ? '明天' : i === 7 ? '下' + DAY_NAMES[d] : DAY_NAMES[d]} ${fromHHMM(r.start)}–${fromHHMM(r.end)}`;
+  if (!cfg.enabled) return { kind: 'pause', big: '管控已暂停', sub: '总开关已关闭', scope: '程序可以打开，网站可以访问' };
+  const until = parseUntil(cfg.allowUntil);
+  if (until && now < until) {
+    const sameDay = until.toDateString() === now.toDateString();
+    return { kind: 'temp', big: '临时放行中', scope: '程序可以打开，网站可以访问', sub: `到 ${sameDay ? '' : cfg.allowUntil.slice(5, 10) + ' '}${cfg.allowUntil.slice(11)} 为止` };
   }
-  return '没有设置开放时间';
+  const hm = pad(now.getHours()) + pad(now.getMinutes());
+  const hit = cfg.schedule[dowOf(now)].find(r => hm >= r.start && hm < r.end);
+  if (hit) return { kind: 'allow', big: '现在开放', scope: '程序可以打开，网站可以访问', sub: `到 ${fromHHMM(hit.end)} 为止` };
+  return { kind: 'block', big: '现在受限', scope: '管控的程序会被关闭，屏蔽的网站打不开', sub: nextWindowText(cfg, now) };
+}
+function nextWindowText(cfg, now) {
+  const hm = pad(now.getHours()) + pad(now.getMinutes());
+  for (let i = 0; i < 7; i++) {
+    const d = ((now.getDay() + 6 + i) % 7) + 1;
+    const r = cfg.schedule[d].find(r => i > 0 || r.start > hm);
+    if (r) return `下次开放：${i === 0 ? '今天' : i === 1 ? '明天' : DAY_NAMES[d]} ${fromHHMM(r.start)}–${fromHHMM(r.end)}`;
+  }
+  return '没有设置允许时间段';
 }
 function daySummary(ranges) {
   return ranges.length ? ranges.map(r => `${fromHHMM(r.start)}–${fromHHMM(r.end)}`).join('、') : '全天受限';
@@ -726,7 +676,7 @@ function toast(msg, ms = 2200) {
 
 async function loadGist() {
   const st = $('status'); st.className = 'status unknown';
-  $('statusBig').textContent = '读取中…'; $('statusSub').textContent = '';
+  $('statusBig').textContent = '读取中…'; $('statusSub').textContent = ''; $('statusScope').textContent = '';
   try {
     const g = await gh('GET', '/gists/' + settings.gistId, settings.token);
     const f = g.files[settings.file];
@@ -760,9 +710,7 @@ function render() {
   $('swEnabled').checked = saved.enabled;
   if (document.activeElement !== $('inMessage')) $('inMessage').value = draft.message;
   const today = dowOf(new Date());
-  $('todaySum').textContent = saved.siteSeparate
-    ? `程序：${daySummary(saved.schedule[today])}\n网站：${daySummary(saved.siteSchedule[today])}`
-    : `${DAY_NAMES[today]}：${daySummary(saved.schedule[today])}`;
+  $('todaySum').textContent = `${DAY_NAMES[today]}：${daySummary(saved.schedule[today])}`;
   renderDays(); renderChips('blockChips', draft.blocks, 1); renderChips('siteChips', draft.sites, 0);
   $('metaInfo').textContent = gistMeta ? `文件 ${settings.file} · 最后修改 ${new Date(gistMeta.updated).toLocaleString()}` : '';
   if (gistMeta) $('lnkGist').href = gistMeta.url;
@@ -772,22 +720,12 @@ function render() {
 function renderStatus() {
   const st = computeStatus(saved);
   $('status').className = 'status ' + st.kind;
-  $('statusBig').textContent = st.big; $('statusSub').textContent = st.sub;
+  $('statusBig').textContent = st.big; $('statusSub').textContent = st.sub; $('statusScope').textContent = st.scope || '';
 }
-let schedTarget = 'app';
-const editSchedule = () => schedTarget === 'site' && draft.siteSeparate ? draft.siteSchedule : draft.schedule;
 function renderDays() {
   const box = $('days'); box.innerHTML = '';
-  const isSite = schedTarget === 'site';
-  $('siteSepRow').classList.toggle('hidden', !isSite);
-  $('swSiteSep').checked = draft.siteSeparate;
-  $('siteSepHint').textContent = draft.siteSeparate ? '下面是网站专用的时间' : '关闭时网站跟程序用同一个时间表';
-  $('schedHint').textContent = !isSite ? '点某一天展开修改。不在这些时间内，管控的程序会被关闭' + (draft.siteSeparate ? '。' : '、网站会被屏蔽。')
-    : draft.siteSeparate ? '点某一天展开修改。不在这些时间内，屏蔽列表里的网站打不开。' : '';
-  if (isSite && !draft.siteSeparate) return;
-  const sched = editSchedule();
   for (let d = 1; d <= 7; d++) {
-    const ranges = sched[d];
+    const ranges = draft.schedule[d];
     const day = document.createElement('div'); day.className = 'day' + (openDay === d ? ' open' : '');
     const head = document.createElement('div'); head.className = 'day-head';
     head.innerHTML = `<span class="day-name">${DAY_NAMES[d]}</span><span class="day-sum ${ranges.length ? 'has' : ''}">${daySummary(ranges)}</span><span class="day-chev">›</span>`;
@@ -811,7 +749,7 @@ function renderDays() {
     actions.appendChild(add);
     const copyTargets = d <= 5 ? [[1, 2, 3, 4, 5], '复制到周一至周五'] : [[6, 7], '复制到周六、周日'];
     const copy = document.createElement('button'); copy.className = 'ghost'; copy.textContent = copyTargets[1];
-    copy.onclick = () => { for (const k of copyTargets[0]) if (k !== d) sched[k] = clone(ranges); render(); toast('已复制，记得保存'); };
+    copy.onclick = () => { for (const k of copyTargets[0]) if (k !== d) draft.schedule[k] = clone(ranges); render(); toast('已复制，记得保存'); };
     actions.appendChild(copy);
     body.appendChild(actions);
     day.append(head, body); box.appendChild(day);
@@ -835,38 +773,13 @@ function goTab(name) {
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.tabbar button').forEach(b => b.onclick = () => goTab(b.dataset.go));
-document.querySelectorAll('#schedTarget button').forEach(b => b.onclick = () => {
-  schedTarget = b.dataset.sched; openDay = null;
-  document.querySelectorAll('#schedTarget button').forEach(x => x.classList.toggle('on', x === b));
-  render();
-});
-$('swSiteSep').onchange = e => {
-  draft.siteSeparate = e.target.checked;
-  if (draft.siteSeparate && ![1, 2, 3, 4, 5, 6, 7].some(d => draft.siteSchedule[d].length)) draft.siteSchedule = clone(draft.schedule);
-  render(); toast(draft.siteSeparate ? '已复制程序的时间表作为起点，修改后记得保存' : '网站将跟程序用同一个时间表，记得保存');
-};
 
-let allowTarget = 'both';
-document.querySelectorAll('#allowTarget button').forEach(b => b.onclick = () => {
-  allowTarget = b.dataset.target;
-  document.querySelectorAll('#allowTarget button').forEach(x => x.classList.toggle('on', x === b));
-});
-const targetKeys = () => allowTarget === 'both' ? ['appUntil', 'siteUntil'] : [allowTarget === 'app' ? 'appUntil' : 'siteUntil'];
-const targetName = () => ({ both: '程序和网站', app: '程序', site: '网站' })[allowTarget];
-function extendFrom(cfg) {   // 已在放行中就从原截止时间往后加
-  const now = new Date();
-  let base = now;
-  for (const k of targetKeys()) { const u = parseUntil(cfg[k]); if (u && u > base) base = u; }
-  return base;
-}
-function applyUntil(d, label) {
-  const cfg = clone(saved); const v = fmtUntil(d);
-  for (const k of targetKeys()) cfg[k] = v;
-  saveGist(cfg, `${targetName()}已放行到 ${label(v)}`);
-}
+function extendFrom() { const u = parseUntil(saved.allowUntil); return u && u > new Date() ? u : new Date(); }
 document.querySelectorAll('[data-mins]').forEach(btn => btn.onclick = () => {
-  if (btn.dataset.mins === 'today') { const d = new Date(); d.setHours(23, 59, 0, 0); return applyUntil(d, v => v.slice(11)); }
-  applyUntil(new Date(extendFrom(saved).getTime() + btn.dataset.mins * 60000), v => v.slice(11));
+  const cfg = clone(saved);
+  if (btn.dataset.mins === 'today') { const d = new Date(); d.setHours(23, 59, 0, 0); cfg.allowUntil = fmtUntil(d); }
+  else cfg.allowUntil = fmtUntil(new Date(extendFrom().getTime() + btn.dataset.mins * 60000));
+  saveGist(cfg, '已放行到 ' + cfg.allowUntil.slice(11));
 });
 $('btnCustomUntil').onclick = () => {
   $('customUntilRow').classList.toggle('hidden');
@@ -876,14 +789,13 @@ $('btnApplyUntil').onclick = () => {
   const v = $('inUntil').value; if (!v) return;
   const [h, m] = v.split(':').map(Number);
   const d = new Date(); d.setHours(h, m, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1);
+  const cfg = clone(saved); cfg.allowUntil = fmtUntil(d);
   $('customUntilRow').classList.add('hidden');
-  applyUntil(d, v => v.slice(5));
+  saveGist(cfg, '已放行到 ' + cfg.allowUntil.slice(5));
 };
 $('btnEndAllow').onclick = () => {
-  const now = new Date();
-  if (!targetKeys().some(k => { const u = parseUntil(saved[k]); return u && u > now; })) return toast(`${targetName()}当前没有临时放行`);
-  const cfg = clone(saved); for (const k of targetKeys()) cfg[k] = '';
-  saveGist(cfg, `已结束${targetName()}的临时放行`);
+  if (!saved.allowUntil) return toast('当前没有临时放行');
+  const cfg = clone(saved); cfg.allowUntil = ''; saveGist(cfg, '已结束临时放行');
 };
 $('swEnabled').onchange = e => { const cfg = clone(saved); cfg.enabled = e.target.checked; saveGist(cfg, cfg.enabled ? '管控已开启' : '管控已暂停'); };
 $('inMessage').oninput = e => { draft.message = e.target.value; $('saveBar').classList.toggle('show', isDirty()); };
@@ -912,13 +824,7 @@ document.querySelectorAll('[data-site-preset]').forEach(b => b.onclick = () => {
   render(); toast(added ? `已添加 ${added} 个网站，记得保存` : '这些网站已经在列表里了');
 });
 $('btnSave').onclick = () => {
-  for (const [t, sch] of [['app', draft.schedule], ['site', draft.siteSchedule]]) {
-    if (t === 'site' && !draft.siteSeparate) continue;
-    for (let d = 1; d <= 7; d++) if (sch[d].some(r => r.start >= r.end)) {
-      schedTarget = t; document.querySelectorAll('#schedTarget button').forEach(x => x.classList.toggle('on', x.dataset.sched === t));
-      openDay = d; goTab('time'); render(); return toast(`${t === 'app' ? '程序' : '网站'}时间表 ${DAY_NAMES[d]} 有时间段结束早于开始`);
-    }
-  }
+  for (let d = 1; d <= 7; d++) if (draft.schedule[d].some(r => r.start >= r.end)) { openDay = d; goTab('time'); render(); return toast(DAY_NAMES[d] + ' 有时间段结束早于开始'); }
   saveGist(draft);
 };
 $('btnDiscard').onclick = () => { draft = clone(saved); render(); };
