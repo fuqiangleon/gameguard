@@ -68,6 +68,7 @@
   .status { border-radius: var(--radius); padding: 18px; margin-bottom: 12px; }
   .status .big { font-size: 24px; font-weight: 750; letter-spacing: .5px; }
   .status .sub { font-size: 15px; margin-top: 4px; }
+  .status .scope { font-size: 13px; margin-top: 8px; opacity: .85; }
   .status.block { background: var(--bad-soft); color: var(--bad); }
   .status.allow { background: var(--ok-soft); color: var(--ok); }
   .status.temp  { background: var(--warn-soft); color: var(--warn); }
@@ -244,7 +245,7 @@
       <summary>设置每周时间表</summary>
       <ul>
         <li>在“时间表”里点某一天展开，点“+ 添加时间段”，选开始和结束时间。一天可以有多个时间段。</li>
-        <li>没有时间段的那天就是全天不能玩。</li>
+        <li>没有时间段的那天就是全天受限（程序关闭、网站屏蔽）。</li>
         <li>工作日设好一天后，可以点“复制到周一至周五”；周末同理。</li>
         <li>改完后点底部黑色条上的<b>保存</b>，不保存不会生效。</li>
       </ul>
@@ -265,7 +266,7 @@
     <details>
       <summary>网站屏蔽不生效怎么办</summary>
       <ul>
-        <li>先看首页状态：如果是“临时放行中”或“现在可以玩”，网站本来就不会被屏蔽。</li>
+        <li>先看首页状态：如果是“临时放行中”或“现在开放”，网站本来就不会被屏蔽。</li>
         <li>在 Mac 上运行 <code>sudo /usr/local/bin/gameguard.sh --show</code>，确认能看到 <code>site=</code> 和“网站屏蔽：生效中”。</li>
         <li>运行 <code>grep 0.0.0.0 /etc/hosts</code>，确认网站已经写入。</li>
         <li><b>Safari + iCloud 专用代理</b>会绕过屏蔽：在孩子账户的 系统设置 → Apple 账户 → iCloud → 专用代理 里关闭。</li>
@@ -331,6 +332,7 @@
       <div class="status unknown" id="status">
         <div class="big" id="statusBig">读取中…</div>
         <div class="sub" id="statusSub"></div>
+        <div class="scope" id="statusScope"></div>
       </div>
 
       <div class="card">
@@ -347,21 +349,21 @@
           <input type="time" id="inUntil">
           <button class="primary" id="btnApplyUntil">确定</button>
         </div>
-        <p class="hint">点击立即保存，孩子电脑一般 1–2 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
+        <p class="hint">放行期间程序和网站都不受限。点击立即保存，孩子电脑一般 1–2 分钟内生效。放行期间如再次点击，会在原有时间上继续延长。</p>
       </div>
 
       <div class="card">
         <div class="spread">
           <div>
             <h2 style="margin:0">管控总开关</h2>
-            <div class="muted">关闭后完全不管控</div>
+            <div class="muted">关闭后不关程序、不屏蔽网站</div>
           </div>
           <label class="switch"><input type="checkbox" id="swEnabled" aria-label="管控总开关"><span class="track"></span><span class="knob"></span></label>
         </div>
       </div>
 
       <div class="card">
-        <h2>今天的允许时间</h2>
+        <h2>今天的开放时间</h2>
         <div id="todaySum" class="muted"></div>
       </div>
     </section>
@@ -369,7 +371,7 @@
     <!-- 时间表 -->
     <section class="tab" data-tab="time">
       <div class="card">
-        <h2>每周允许时间</h2>
+        <h2>每周开放时间</h2>
         <p class="muted" style="margin:-4px 0 4px">点某一天展开修改。不在这些时间内，游戏会被关闭、网站会被屏蔽。</p>
         <div id="days"></div>
       </div>
@@ -577,28 +579,28 @@ const toHHMM = t => t.replace(':', '');
 const fromHHMM = t => t.slice(0, 2) + ':' + t.slice(2);
 const dowOf = d => ((d.getDay() + 6) % 7) + 1;   // 1=周一 … 7=周日
 function computeStatus(cfg, now = new Date()) {
-  if (!cfg.enabled) return { kind: 'pause', big: '管控已暂停', sub: '游戏和网站不受限制' };
+  if (!cfg.enabled) return { kind: 'pause', big: '管控已暂停', sub: '总开关已关闭', scope: '程序可以打开，网站可以访问' };
   const until = parseUntil(cfg.allowUntil);
   if (until && now < until) {
     const sameDay = until.toDateString() === now.toDateString();
-    return { kind: 'temp', big: '临时放行中', sub: `到 ${sameDay ? '' : cfg.allowUntil.slice(5, 10) + ' '}${cfg.allowUntil.slice(11)} 为止` };
+    return { kind: 'temp', big: '临时放行中', scope: '程序可以打开，网站可以访问', sub: `到 ${sameDay ? '' : cfg.allowUntil.slice(5, 10) + ' '}${cfg.allowUntil.slice(11)} 为止` };
   }
   const hm = pad(now.getHours()) + pad(now.getMinutes());
   const hit = cfg.schedule[dowOf(now)].find(r => hm >= r.start && hm < r.end);
-  if (hit) return { kind: 'allow', big: '现在可以玩', sub: `到 ${fromHHMM(hit.end)} 为止` };
-  return { kind: 'block', big: '现在禁止游戏', sub: nextWindowText(cfg, now) };
+  if (hit) return { kind: 'allow', big: '现在开放', scope: '程序可以打开，网站可以访问', sub: `到 ${fromHHMM(hit.end)} 为止` };
+  return { kind: 'block', big: '现在受限', scope: '管控的程序会被关闭，屏蔽的网站打不开', sub: nextWindowText(cfg, now) };
 }
 function nextWindowText(cfg, now) {
   const hm = pad(now.getHours()) + pad(now.getMinutes());
   for (let i = 0; i < 7; i++) {
     const d = ((now.getDay() + 6 + i) % 7) + 1;
     const r = cfg.schedule[d].find(r => i > 0 || r.start > hm);
-    if (r) return `下次可以玩：${i === 0 ? '今天' : i === 1 ? '明天' : DAY_NAMES[d]} ${fromHHMM(r.start)}–${fromHHMM(r.end)}`;
+    if (r) return `下次开放：${i === 0 ? '今天' : i === 1 ? '明天' : DAY_NAMES[d]} ${fromHHMM(r.start)}–${fromHHMM(r.end)}`;
   }
   return '没有设置允许时间段';
 }
 function daySummary(ranges) {
-  return ranges.length ? ranges.map(r => `${fromHHMM(r.start)}–${fromHHMM(r.end)}`).join('、') : '全天不能玩';
+  return ranges.length ? ranges.map(r => `${fromHHMM(r.start)}–${fromHHMM(r.end)}`).join('、') : '全天受限';
 }
 // ==LOGIC END==
 
@@ -674,7 +676,7 @@ function toast(msg, ms = 2200) {
 
 async function loadGist() {
   const st = $('status'); st.className = 'status unknown';
-  $('statusBig').textContent = '读取中…'; $('statusSub').textContent = '';
+  $('statusBig').textContent = '读取中…'; $('statusSub').textContent = ''; $('statusScope').textContent = '';
   try {
     const g = await gh('GET', '/gists/' + settings.gistId, settings.token);
     const f = g.files[settings.file];
@@ -718,7 +720,7 @@ function render() {
 function renderStatus() {
   const st = computeStatus(saved);
   $('status').className = 'status ' + st.kind;
-  $('statusBig').textContent = st.big; $('statusSub').textContent = st.sub;
+  $('statusBig').textContent = st.big; $('statusSub').textContent = st.sub; $('statusScope').textContent = st.scope || '';
 }
 function renderDays() {
   const box = $('days'); box.innerHTML = '';

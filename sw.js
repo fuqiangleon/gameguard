@@ -1,5 +1,5 @@
 // GameGuard 控制台 Service Worker：只缓存本站页面，联网优先（保证拿到最新版），离线时用缓存
-const CACHE = 'gameguard-v1';
+const CACHE = 'gameguard-v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
