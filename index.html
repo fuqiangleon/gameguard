@@ -154,6 +154,16 @@
   .help code { background: var(--bg); border-radius: 6px; padding: 1px 6px; font-size: 13px; word-break: break-all; }
   .help pre { margin: 8px 0; }
   .hidden { display: none !important; }
+  .hb { padding: 10px 0; border-top: 1px solid var(--line); }
+  .hb:first-child { border-top: 0; padding-top: 0; }
+  .hb-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hb-name { font-weight: 650; }
+  .hb-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pause); flex: none; }
+  .hb-dot.on { background: var(--ok); }
+  .hb-dot.off { background: var(--bad); }
+  .hb-when { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .hb-line { font-size: 14px; margin-top: 4px; }
+  .hb-warn { font-size: 13px; margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
   .tab { display: none; }
   .tab.active { display: block; }
   @media (max-width: 350px) { .quick { grid-template-columns: repeat(2, 1fr); } }
@@ -298,6 +308,19 @@
     </details>
 
     <details>
+      <summary>孩子的 Mac 在线状态（心跳）</summary>
+      <p>开启后，孩子的 Mac 每 5 分钟（状态变化时立即）把当前状态写到 Gist 的一条评论里，首页「孩子的 Mac」会显示：是否在线、最近心跳时间、程序和网站是否受限、公网和内网 IP、当前登录的账户。超过 12 分钟没有心跳就显示为离线。</p>
+      <p><b>开启步骤：</b></p>
+      <ol>
+        <li>在 GitHub 新建一个专用令牌：Settings → Developer settings → Fine-grained tokens → Generate，名称写「GameGuard 心跳」，Account permissions 里只给 <b>Gists：Read and write</b>，有效期建议 1 年。</li>
+        <li>先把 Mac 升级到最新版（见下方「更新 Mac 上的管控程序」）。</li>
+        <li>在孩子 Mac 的管理员账户终端运行下面的命令，提示时粘贴令牌（不会显示出来）：
+<pre>curl -fsSL https://raw.githubusercontent.com/fuqiangleon/gameguard/main/mac/install.sh -o /tmp/gg.sh && sudo bash /tmp/gg.sh heartbeat</pre></li>
+      </ol>
+      <p>离线不一定是被破解：Mac 合盖睡眠、关机、断网都会让心跳停止。如果离线时孩子明明在用电脑，就需要检查管控程序。令牌只保存在 Mac 上只有管理员能读的文件里；令牌过期后心跳会停止，到时换一个新令牌重新运行上面的命令即可。</p>
+    </details>
+
+    <details>
       <summary>添加到手机桌面（App 模式）</summary>
       <ul>
         <li><b>iPhone / iPad</b>：用 Safari 打开控制台 → 点底部「分享」按钮 →「添加到主屏幕」。</li>
@@ -333,6 +356,11 @@
         <div class="big" id="statusBig">读取中…</div>
         <div class="sub" id="statusSub"></div>
         <div class="scope" id="statusScope"></div>
+      </div>
+
+      <div class="card">
+        <div class="spread"><h2 style="margin:0">孩子的 Mac</h2><button class="linkbtn" data-help>怎么开启？</button></div>
+        <div id="hbList" class="muted" style="margin-top:10px">读取中…</div>
       </div>
 
       <div class="card">
@@ -686,11 +714,73 @@ async function loadGist() {
     gistMeta = { updated: g.updated_at, url: g.html_url };
     saved = parseConfig(content); draft = clone(saved);
     render();
+    loadHeartbeats();
   } catch (e) {
     $('statusBig').textContent = '读取失败'; $('statusSub').textContent = e.message;
     throw e;
   }
 }
+
+// ================= 心跳：孩子 Mac 定时写在 Gist 评论里的状态 =================
+const HB_PREFIX = 'gameguard-heartbeat ';
+const HB_ONLINE_MIN = 12;           // 超过这么多分钟没有心跳就算离线（Mac 每 5 分钟汇报一次）
+let heartbeats = null;
+async function loadHeartbeats() {
+  if (!settings) return;
+  try {
+    const list = await gh('GET', `/gists/${settings.gistId}/comments?per_page=100`, settings.token);
+    const byHost = new Map();
+    for (const c of list) {
+      const b = String(c.body || '');
+      if (!b.startsWith(HB_PREFIX)) continue;
+      let d; try { d = JSON.parse(b.slice(HB_PREFIX.length)); } catch { continue; }
+      if (!d || typeof d !== 'object') continue;
+      d._at = new Date(c.updated_at);
+      const k = String(d.host || c.id);
+      if (!byHost.has(k) || byHost.get(k)._at < d._at) byHost.set(k, d);
+    }
+    heartbeats = [...byHost.values()].sort((a, b) => b._at - a._at);
+  } catch (e) { heartbeats = { error: e.message }; }
+  renderHeartbeats();
+}
+function ago(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + ' 分钟前';
+  const h = Math.floor(m / 60);
+  return h < 48 ? h + ' 小时前' : Math.floor(h / 24) + ' 天前';
+}
+const hm = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
+function renderHeartbeats() {
+  const box = $('hbList'); box.innerHTML = '';
+  if (heartbeats === null) { box.textContent = '读取中…'; return; }
+  if (heartbeats.error) { box.textContent = '读取心跳失败：' + heartbeats.error; return; }
+  if (!heartbeats.length) { box.textContent = '还没有收到心跳。在孩子的 Mac 上开启心跳后，这里会显示它是否在线、是否在受控状态。'; return; }
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  for (const h of heartbeats) {
+    const age = Date.now() - h._at;
+    const online = age <= HB_ONLINE_MIN * 60000;
+    const row = el('div', 'hb');
+    const head = el('div', 'hb-head');
+    head.append(el('span', 'hb-dot ' + (online ? 'on' : 'off')), el('span', 'hb-name', h.host || 'Mac'),
+      el('span', '', online ? '在线' : '离线'),
+      el('span', 'hb-when', `最近心跳 ${ago(age)}（${age > 864e5 ? (h._at.getMonth() + 1) + '月' + h._at.getDate() + '日 ' : ''}${hm(h._at)}）`));
+    row.append(head);
+    const state = h.enabled === 'false' ? '管控已暂停（总开关关闭）'
+      : `程序：${h.app_open ? '开放' : '受限'} · 网站：${h.site_open ? '开放' : '受限'}`;
+    row.append(el('div', 'hb-line', (online ? '' : '最后一次汇报时 · ') + state));
+    const ips = [h.ip_public && `${h.ip_public}（公网）`, h.ip_local && `${h.ip_local}（内网）`].filter(Boolean).join(' · ');
+    if (ips) row.append(el('div', 'hb-line', 'IP：' + ips));
+    const extra = [h.user && h.user !== 'root' ? '当前登录：' + h.user : '登录界面（无人登录）',
+      h.last_kill && Date.now() / 1000 - h.last_kill < 86400 ? '最近关闭游戏：' + hm(new Date(h.last_kill * 1000)) : '',
+      h.version ? '版本 ' + h.version : ''].filter(Boolean).join(' · ');
+    row.append(el('div', 'hb-line muted', extra));
+    if (!online) row.append(el('div', 'hb-warn', `已经 ${ago(age).replace('前', '')}没有心跳。Mac 可能关机、睡眠或断网；如果孩子此时正在用这台电脑，说明管控程序可能被关掉了。`));
+    box.append(row);
+  }
+}
+setInterval(() => { if (settings && document.visibilityState === 'visible' && !$('appArea').classList.contains('hidden')) loadHeartbeats(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && settings && heartbeats !== null) loadHeartbeats(); });
 async function saveGist(cfg, okMsg = '已保存') {
   const content = serializeConfig(cfg);
   const btns = [...document.querySelectorAll('#appArea button')]; btns.forEach(b => b.disabled = true);
@@ -712,7 +802,7 @@ function render() {
   const today = dowOf(new Date());
   $('todaySum').textContent = `${DAY_NAMES[today]}：${daySummary(saved.schedule[today])}`;
   renderDays(); renderChips('blockChips', draft.blocks, 1); renderChips('siteChips', draft.sites, 0);
-  $('metaInfo').textContent = gistMeta ? `文件 ${settings.file} · 最后修改 ${new Date(gistMeta.updated).toLocaleString()}` : '';
+  $('metaInfo').textContent = gistMeta ? `文件 ${settings.file}` : '';
   if (gistMeta) $('lnkGist').href = gistMeta.url;
   $('rawText').textContent = serializeConfig(draft);
   $('saveBar').classList.toggle('show', isDirty());
