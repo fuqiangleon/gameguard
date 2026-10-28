@@ -2,7 +2,6 @@
 # 首次安装：sudo ./install.sh "https://gist.githubusercontent.com/<用户名>/<gist id>/raw/gameguard.txt"
 # 更新脚本：sudo ./install.sh            （不填地址则沿用已保存的配置地址）
 # 卸载：    sudo ./install.sh uninstall
-# 心跳：    sudo ./install.sh heartbeat   （粘贴心跳令牌，开启/关闭状态汇报）
 set -e
 [ "$(id -u)" -eq 0 ] || { echo "请用 sudo 运行"; exit 1; }
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,33 +32,11 @@ if [ "$1" = "uninstall" ]; then
   exit 0
 fi
 
-if [ "$1" = "heartbeat" ]; then
-  [ -f "$CONF" ] || { echo "请先安装 GameGuard"; exit 1; }
-  printf "粘贴心跳令牌（输入时不显示；直接回车 = 关闭心跳）：" > /dev/tty
-  read -rs HB < /dev/tty; echo > /dev/tty
-  case "$HB" in ""|github_pat_*|ghp_*) ;; *) echo "令牌格式不对，应以 github_pat_ 开头"; exit 1 ;; esac
-  tmp=$(mktemp)
-  grep -v '^HEARTBEAT_TOKEN=' "$CONF" > "$tmp"
-  [ -n "$HB" ] && echo "HEARTBEAT_TOKEN=\"$HB\"" >> "$tmp"
-  cat "$tmp" > "$CONF"; rm -f "$tmp"; chown root:wheel "$CONF"; chmod 600 "$CONF"
-  rm -f /var/db/gameguard/hb.last /var/db/gameguard/hb.state /var/db/gameguard/hb.fail
-  if [ -z "$HB" ]; then echo "已关闭心跳。"; exit 0; fi
-  echo "已保存，正在发送第一次心跳…"
-  /usr/local/bin/gameguard.sh
-  if [ -f /var/db/gameguard/hb.last ]; then
-    echo "心跳发送成功。打开家长控制台首页即可看到这台 Mac 的在线状态。"
-  else
-    echo "心跳发送失败，最近的日志："; tail -3 /var/log/gameguard.log
-  fi
-  exit 0
-fi
-
-# 保留已设置的心跳选项
-HB_TOKEN=""; HB_URL=""; HB_SECONDS=""
+# 保留手动设置的心跳选项
+HB_SECONDS=""; HB_NTFY=""
 if [ -f "$CONF" ]; then
-  HB_TOKEN=$(. "$CONF"; echo "$HEARTBEAT_TOKEN")
-  HB_URL=$(. "$CONF"; echo "$HEARTBEAT_URL")
   HB_SECONDS=$(. "$CONF"; echo "$HEARTBEAT_SECONDS")
+  HB_NTFY=$(. "$CONF"; echo "$NTFY_SERVER")
 fi
 
 URL="$1"; TOKEN="$2"
@@ -81,9 +58,8 @@ CONFIG_URL="$URL"
 AUTH_TOKEN="$TOKEN"
 REFRESH_SECONDS=60
 EOF
-[ -n "$HB_TOKEN" ] && echo "HEARTBEAT_TOKEN=\"$HB_TOKEN\"" >> "$CONF"
-[ -n "$HB_URL" ] && echo "HEARTBEAT_URL=\"$HB_URL\"" >> "$CONF"
 [ -n "$HB_SECONDS" ] && echo "HEARTBEAT_SECONDS=$HB_SECONDS" >> "$CONF"
+[ -n "$HB_NTFY" ] && echo "NTFY_SERVER=\"$HB_NTFY\"" >> "$CONF"
 chown root:wheel "$CONF"; chmod 600 "$CONF"
 rm -f /var/db/gameguard/config.cache
 

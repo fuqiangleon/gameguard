@@ -6,9 +6,9 @@
 #     CONFIG_URL="https://.../gameguard.txt"
 #     AUTH_TOKEN=""          # 可选，作为 Authorization: Bearer 发送
 #     REFRESH_SECONDS=60     # 可选，多久拉取一次网络配置（秒）
-#     HEARTBEAT_TOKEN=""     # 可选，有 Gists 写权限的令牌；设置后定时把状态汇报到 Gist 评论（心跳）
-#     HEARTBEAT_SECONDS=300  # 可选，心跳间隔（秒）；状态变化时会立即汇报
-#     HEARTBEAT_URL=""       # 可选，每次心跳额外访问的地址（如 healthchecks.io，用于掉线报警）
+#     HEARTBEAT_SECONDS=600  # 可选，心跳间隔（秒）；状态变化时会立即汇报
+#     NTFY_SERVER="https://ntfy.sh"  # 可选，心跳发往的 ntfy 服务器（可换成自建的）
+#   心跳频道（heartbeat_topic）写在网络配置里，由家长控制台生成，不需要任何令牌。
 #
 # 手动测试（只检测、不结束）：  sudo /usr/local/bin/gameguard.sh --dry-run
 # 查看当前生效的配置：         sudo /usr/local/bin/gameguard.sh --show
@@ -24,9 +24,8 @@ LOG=/var/log/gameguard.log
 CONFIG_URL=""
 AUTH_TOKEN=""
 REFRESH_SECONDS=60
-HEARTBEAT_TOKEN=""
-HEARTBEAT_SECONDS=300
-HEARTBEAT_URL=""
+HEARTBEAT_SECONDS=600
+NTFY_SERVER="https://ntfy.sh"
 GG_VERSION="2026.10.28"
 [ -f "$LOCAL_CONF" ] && . "$LOCAL_CONF"     # 本地文件只有 root 可写
 
@@ -56,8 +55,7 @@ fi
 if [ -n "$CONFIG_URL" ] && [ $need_refresh -eq 1 ]; then
   tmp=$(mktemp "$STATE_DIR/dl.XXXXXX")
   hdr=()
-  tok="${AUTH_TOKEN:-$HEARTBEAT_TOKEN}"     # 有令牌就带上，API 限额从每小时 60 次提高到 5000 次
-  [ -n "$tok" ] && hdr=(-H "Authorization: Bearer $tok")
+  [ -n "$AUTH_TOKEN" ] && hdr=(-H "Authorization: Bearer $AUTH_TOKEN")
   ok=0
   # 优先走 GitHub API（没有 CDN 缓存，保存后约 1 分钟生效）；失败再用 raw 地址（可能有约 5 分钟缓存）
   gid=$(echo "$CONFIG_URL" | sed -nE 's#^https://gist\.githubusercontent\.com/[^/]+/([0-9a-fA-F]+)/raw/.*#\1#p')
@@ -103,6 +101,7 @@ ALLOWED=()
 SITE_ALLOWED_WIN=()
 BLOCKS=()
 SITES=()
+HB_TOPIC=""
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%%#*}"                                    # 去掉注释
   line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/\r$//')"
@@ -114,6 +113,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     allow_until) ALLOW_UNTIL="$val" ;;
     app_allow_until)  APP_ALLOW_UNTIL="$val" ;;
     site_allow_until) SITE_ALLOW_UNTIL="$val" ;;
+    heartbeat_topic) echo "$val" | grep -Eq '^[A-Za-z0-9_-]{16,64}$' && HB_TOPIC="$val" ;;
     site_schedule)    [ "$val" = "separate" ] && SITE_SCHEDULE=separate ;;
     allow)       echo "$val" | grep -Eq '^[1-7](,[1-7])* [0-9]{4} [0-9]{4}$' && ALLOWED+=("$val") ;;
     site_allow)  echo "$val" | grep -Eq '^[1-7](,[1-7])* [0-9]{4} [0-9]{4}$' && SITE_ALLOWED_WIN+=("$val") ;;
@@ -233,11 +233,11 @@ if [ "$MODE" = "show" ]; then
   if [ -n "$wanted_block" ]; then echo "→ 网站屏蔽：生效中（${#SITES[@]} 个网站）"; else echo "→ 网站屏蔽：未生效"; fi
   echo "→ 程序：${APP_TEXT}"
   echo "→ 网站：${SITE_TEXT}"
-  if [ -n "$HEARTBEAT_TOKEN" ]; then
+  if [ -n "$HB_TOPIC" ]; then
     hb_last=$(cat "$STATE_DIR/hb.last" 2>/dev/null)
     echo "→ 心跳：已开启（每 $((HEARTBEAT_SECONDS / 60)) 分钟），上次成功：${hb_last:+$(date -r "$hb_last" '+%Y-%m-%d %H:%M:%S')}${hb_last:-还没有}"
   else
-    echo "→ 心跳：未开启（没有设置心跳令牌）"
+    echo "→ 心跳：未开启（在家长控制台首页点「开启心跳」）"
   fi
   exit 0
 fi
@@ -318,20 +318,18 @@ if [ $APP_ALLOWED -eq 0 ]; then
 
 fi
 
-# ---------- 6. 心跳：把当前状态写到 Gist 的一条评论里，家长控制台据此显示是否在线 ----------
-# 评论不进 Gist 的版本历史，所以频繁更新也不会让 Gist 变大。每台 Mac 只占一条评论，反复更新它。
+# ---------- 6. 心跳：把当前状态发到 ntfy 频道，家长控制台据此显示是否在线 ----------
+# 频道名是家长控制台生成的随机字符串，保存在私密 Gist 的配置里；不需要任何令牌。
 heartbeat() {
-  [ "$MODE" = "run" ] && [ -n "$HEARTBEAT_TOKEN" ] || return 0
-  local gid now state last_ts last_state
-  gid=$(echo "$CONFIG_URL" | sed -nE 's#^https://gist\.githubusercontent\.com/[^/]+/([0-9a-fA-F]+)/raw/.*#\1#p')
-  [ -n "$gid" ] || return 0
+  [ "$MODE" = "run" ] && [ -n "$HB_TOPIC" ] || return 0
+  local now state last_ts last_state
   now=$(date +%s)
-  state="${ENABLED}-${APP_ALLOWED}-${SITE_ALLOWED}"
+  state="${HB_TOPIC}-${ENABLED}-${APP_ALLOWED}-${SITE_ALLOWED}"
   last_ts=$(cat "$STATE_DIR/hb.last" 2>/dev/null); last_ts=${last_ts:-0}
   last_state=$(cat "$STATE_DIR/hb.state" 2>/dev/null)
   if [ "$state" = "$last_state" ] && [ $((now - last_ts)) -lt "$HEARTBEAT_SECONDS" ]; then return 0; fi
 
-  local iface lip pip host cuser boot cfg_age lastkill body resp code cid
+  local iface lip pip host cuser boot cfg_age lastkill msg code
   iface=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
   [ -n "$iface" ] && lip=$(ipconfig getifaddr "$iface" 2>/dev/null)
   pip=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null)
@@ -342,45 +340,28 @@ heartbeat() {
   cfg_age=""; [ -f "$CACHE" ] && cfg_age=$(( now - $(stat -f %m "$CACHE") ))
   lastkill=$(cat "$STATE_DIR/last_kill" 2>/dev/null)
 
-  body=$(mktemp "$STATE_DIR/hb.XXXXXX"); resp="$body.resp"
+  msg=$(mktemp "$STATE_DIR/hb.XXXXXX")
   osascript -l JavaScript -e 'function run(a){var o={};for(var i=0;i+1<a.length;i+=2){var v=a[i+1];o[a[i]]=/^-?[0-9]+$/.test(v)?Number(v):v;}
-var t="gameguard-heartbeat "+JSON.stringify(o);
-return JSON.stringify({body:t}).replace(/[\u007f-￿]/g,function(c){return "\\u"+("0000"+c.charCodeAt(0).toString(16)).slice(-4);});}' \
-    v 1 host "$host" version "$GG_VERSION" time "$now" boot "${boot:-0}" user "$cuser" \
+return JSON.stringify(o).replace(/[\u007f-￿]/g,function(c){return "\\u"+("0000"+c.charCodeAt(0).toString(16)).slice(-4);});}' \
+    gg 1 host "$host" version "$GG_VERSION" time "$now" boot "${boot:-0}" user "$cuser" \
     ip_local "$lip" ip_public "$pip" iface "$iface" enabled "$ENABLED" \
     app_open "$APP_ALLOWED" app_text "$APP_TEXT" site_open "$SITE_ALLOWED" site_text "$SITE_TEXT" \
-    sites "${#SITES[@]}" blocks "${#BLOCKS[@]}" config_age "${cfg_age:-0}" last_kill "${lastkill:-0}" > "$body" 2>/dev/null
+    sites "${#SITES[@]}" blocks "${#BLOCKS[@]}" config_age "${cfg_age:-0}" last_kill "${lastkill:-0}" > "$msg" 2>/dev/null
 
-  if [ -s "$body" ]; then
-    local auth=(-H "Authorization: Bearer $HEARTBEAT_TOKEN" -H "Accept: application/vnd.github+json")
-    cid=$(cat "$STATE_DIR/hb.comment" 2>/dev/null)
-    if [ -n "$cid" ]; then
-      code=$(curl -sS --max-time 15 --proto '=https' -o "$resp" -w '%{http_code}' -X PATCH "${auth[@]}" \
-             --data-binary @"$body" "https://api.github.com/gists/$gid/comments/$cid" 2>/dev/null)
-      [ "$code" = "404" ] && cid=""
-    fi
-    if [ -z "$cid" ]; then
-      code=$(curl -sS --max-time 15 --proto '=https' -o "$resp" -w '%{http_code}' -X POST "${auth[@]}" \
-             --data-binary @"$body" "https://api.github.com/gists/$gid/comments" 2>/dev/null)
-      if [ "$code" = "201" ]; then
-        grep -Eo '"id": *[0-9]+' "$resp" | head -1 | grep -Eo '[0-9]+' > "$STATE_DIR/hb.comment"
-      fi
-    fi
+  code=""
+  if [ -s "$msg" ]; then
+    code=$(curl -sS --max-time 15 --proto '=https' -o /dev/null -w '%{http_code}' \
+           -H "X-Title: GameGuard" -H "X-Priority: 1" -H "X-Tags: gameguard" \
+           --data-binary @"$msg" "$NTFY_SERVER/$HB_TOPIC" 2>/dev/null)
   fi
-
-  if [ "$code" = "200" ] || [ "$code" = "201" ]; then
+  rm -f "$msg"
+  if [ "$code" = "200" ]; then
     echo "$now" > "$STATE_DIR/hb.last"; echo "$state" > "$STATE_DIR/hb.state"
     [ -f "$STATE_DIR/hb.fail" ] && { rm -f "$STATE_DIR/hb.fail"; log "心跳恢复正常"; }
   elif [ ! -f "$STATE_DIR/hb.fail" ]; then
     touch "$STATE_DIR/hb.fail"
-    case "$code" in
-      401) log "心跳上报失败：令牌无效或已过期" ;;
-      403|404) log "心跳上报失败（HTTP $code）：令牌没有这个 Gist 的写权限" ;;
-      *) log "心跳上报失败（HTTP ${code:-无响应}），之后恢复会再记录" ;;
-    esac
+    log "心跳发送失败（HTTP ${code:-无响应}），之后恢复会再记录"
   fi
-  rm -f "$body" "$resp"
-  [ -n "$HEARTBEAT_URL" ] && curl -fsS --max-time 10 --retry 2 -o /dev/null "$HEARTBEAT_URL" 2>/dev/null
   return 0
 }
 heartbeat
