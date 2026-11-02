@@ -9,7 +9,7 @@
         <string>/usr/local/bin/gameguard.sh</string>
     </array>
     <key>StartInterval</key>
-    <integer>60</integer>
+    <integer>20</integer>
     <key>RunAtLoad</key>
     <true/>
 </dict>

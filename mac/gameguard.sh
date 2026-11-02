@@ -1,7 +1,7 @@
 #!/bin/bash
 # gameguard.sh —— 按网络配置检测并结束游戏进程（macOS）
 #
-# 由 launchd 以 root 身份每分钟运行一次。
+# 由 launchd 以 root 身份每 20 秒运行一次（读取网络配置仍是每分钟一次）。
 # 配置地址写在 /usr/local/etc/gameguard.conf（只有 root 能读写）：
 #     CONFIG_URL="https://.../gameguard.txt"
 #     AUTH_TOKEN=""          # 可选，作为 Authorization: Bearer 发送
@@ -26,7 +26,7 @@ AUTH_TOKEN=""
 REFRESH_SECONDS=60
 HEARTBEAT_SECONDS=600
 NTFY_SERVER="https://ntfy.sh"
-GG_VERSION="2026.10.28"
+GG_VERSION="2026.11.02"
 [ -f "$LOCAL_CONF" ] && . "$LOCAL_CONF"     # 本地文件只有 root 可写
 
 # 网络配置拿不到、也没有缓存时使用的默认规则（全天禁止）
@@ -38,6 +38,8 @@ block=Minecraft.app
 block=minecraft-launcher
 block=net.minecraft
 block=Minecraft Education
+block=com.roblox.
+block=com.mojang.
 message=现在不是游戏时间，游戏已被关闭。'
 
 mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR"
@@ -289,21 +291,61 @@ fi
 killed=0
 if [ $APP_ALLOWED -eq 0 ]; then
   # ---------- 5. 查找并结束进程 ----------
+  # 两种匹配方式，任一命中就结束：
+  #   ① 进程完整命令行里包含关键字（不区分大小写）
+  #   ② 进程所在 .app 的 Bundle ID 以关键字开头（如 com.roblox.）—— 孩子给程序改名也躲不过
+  kill_pid() {   # $1=pid  $2=匹配到的规则  $3=说明
+    local pid="$1" owner cmd
+    [ "$pid" = "$$" ] && return
+    owner=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+    [ -z "$owner" ] && return
+    [ "$owner" = "root" ] && return                    # 只处理普通用户的进程
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null)
+    case "$cmd" in *gameguard*) return ;; esac
+    case " $done_pids " in *" $pid "*) return ;; esac
+    done_pids="$done_pids $pid"
+    if [ "$MODE" = "dry" ]; then
+      log "[测试] 匹配“$2”$3：PID $pid ($owner) $cmd"
+    else
+      kill -9 "$pid" 2>/dev/null && { log "已结束 PID $pid ($owner)，匹配“$2”$3：$cmd"; killed=1; date +%s > "$STATE_DIR/last_kill"; }
+    fi
+  }
+  done_pids=""
   for pat in "${BLOCKS[@]}"; do
-    for pid in $(pgrep -if -- "$pat"); do
-      [ "$pid" = "$$" ] && continue
-      owner=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
-      [ -z "$owner" ] && continue
-      [ "$owner" = "root" ] && continue                  # 只处理普通用户的进程
-      cmd=$(ps -o command= -p "$pid" 2>/dev/null)
-      case "$cmd" in *gameguard*) continue ;; esac
-      if [ "$MODE" = "dry" ]; then
-        log "[测试] 匹配“${pat}”：PID $pid ($owner) $cmd"
-      else
-        kill -9 "$pid" 2>/dev/null && { log "已结束 PID $pid ($owner)，匹配“${pat}”：$cmd"; killed=1; date +%s > "$STATE_DIR/last_kill"; }
-      fi
-    done
+    for pid in $(pgrep -if -- "$pat"); do kill_pid "$pid" "$pat" ""; done
   done
+
+  # Bundle ID：找出普通用户进程所在的每个 .app，读取它的 CFBundleIdentifier
+  bid_rules=()
+  for pat in "${BLOCKS[@]}"; do
+    echo "$pat" | grep -Eq '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]*)+$' && bid_rules+=("$(echo "$pat" | tr 'A-Z' 'a-z')")
+  done
+  if [ ${#bid_rules[@]} -gt 0 ]; then
+    BID_CACHE="$STATE_DIR/bundle-ids.cache"     # 每行：.app 路径<TAB>Bundle ID
+    touch "$BID_CACHE"
+    while IFS=$'\t' read -r pid exe; do
+      [ -n "$exe" ] || continue
+      app="$exe"
+      while :; do
+        case "$app" in *.app/*) ;; *) break ;; esac
+        app="${app%.app/*}.app"                     # 最内层 → 逐层往外检查每个 .app
+        bid=$(awk -F'\t' -v p="$app" '$1==p{print $2; exit}' "$BID_CACHE")
+        if [ -z "$bid" ]; then
+          bid=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null)
+          [ -n "$bid" ] && printf '%s\t%s\n' "$app" "$bid" >> "$BID_CACHE"
+        fi
+        lbid=$(echo "$bid" | tr 'A-Z' 'a-z')
+        if [ -n "$lbid" ]; then
+          for r in "${bid_rules[@]}"; do
+            case "$lbid" in "$r"*) kill_pid "$pid" "$r" "（Bundle ID $bid）"; continue 3 ;; esac
+          done
+        fi
+        app="${app%/*}"                             # 去掉最后一个 .app，继续检查外层
+      done
+    done < <(ps -axo pid=,user=,comm= | awk '$2!="root" && $0 ~ /\.app\// {pid=$1; $1=""; $2=""; sub(/^  /,""); print pid "\t" $0}')
+    # 缓存太大时清空（应用路径变化后会自动重建）
+    [ "$(wc -l < "$BID_CACHE")" -gt 2000 ] && : > "$BID_CACHE"
+  fi
 
   # ---------- 5b. 提示当前用户 ----------
   if [ $killed -eq 1 ]; then
@@ -329,7 +371,7 @@ heartbeat() {
   last_state=$(cat "$STATE_DIR/hb.state" 2>/dev/null)
   if [ "$state" = "$last_state" ] && [ $((now - last_ts)) -lt "$HEARTBEAT_SECONDS" ]; then return 0; fi
 
-  local iface lip pip host cuser boot cfg_age lastkill msg code
+  local iface lip pip host cuser boot wake safeboot cfg_age lastkill msg code
   iface=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
   [ -n "$iface" ] && lip=$(ipconfig getifaddr "$iface" 2>/dev/null)
   pip=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null)
@@ -337,13 +379,15 @@ heartbeat() {
   host=$(scutil --get ComputerName 2>/dev/null)
   cuser=$(stat -f%Su /dev/console 2>/dev/null)
   boot=$(sysctl -n kern.boottime 2>/dev/null | sed -nE 's/.*[{] sec = ([0-9]+).*/\1/p')
+  wake=$(sysctl -n kern.waketime 2>/dev/null | sed -nE 's/.*[{] sec = ([0-9]+).*/\1/p')
+  safeboot=$(sysctl -n kern.safeboot 2>/dev/null)
   cfg_age=""; [ -f "$CACHE" ] && cfg_age=$(( now - $(stat -f %m "$CACHE") ))
   lastkill=$(cat "$STATE_DIR/last_kill" 2>/dev/null)
 
   msg=$(mktemp "$STATE_DIR/hb.XXXXXX")
   osascript -l JavaScript -e 'function run(a){var o={};for(var i=0;i+1<a.length;i+=2){var v=a[i+1];o[a[i]]=/^-?[0-9]+$/.test(v)?Number(v):v;}
 return JSON.stringify(o).replace(/[\u007f-￿]/g,function(c){return "\\u"+("0000"+c.charCodeAt(0).toString(16)).slice(-4);});}' \
-    gg 1 host "$host" version "$GG_VERSION" time "$now" boot "${boot:-0}" user "$cuser" \
+    gg 1 host "$host" version "$GG_VERSION" time "$now" boot "${boot:-0}" wake "${wake:-0}" safeboot "${safeboot:-0}" user "$cuser" \
     ip_local "$lip" ip_public "$pip" iface "$iface" enabled "$ENABLED" \
     app_open "$APP_ALLOWED" app_text "$APP_TEXT" site_open "$SITE_ALLOWED" site_text "$SITE_TEXT" \
     sites "${#SITES[@]}" blocks "${#BLOCKS[@]}" config_age "${cfg_age:-0}" last_kill "${lastkill:-0}" > "$msg" 2>/dev/null

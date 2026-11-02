@@ -66,7 +66,7 @@ rm -f /var/db/gameguard/config.cache
 launchctl bootout system "$PLIST" 2>/dev/null || true
 launchctl bootstrap system "$PLIST"
 
-echo "已安装，每分钟检查一次，每 1 分钟拉取一次网络配置。"
+echo "已安装：每 20 秒检查一次，每分钟拉取一次网络配置。"
 [ -z "$URL" ] && echo "注意：没有填写配置地址，将使用内置默认规则（全天禁止）。"
 echo
 /usr/local/bin/gameguard.sh --show
