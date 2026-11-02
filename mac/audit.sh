@@ -25,13 +25,12 @@ echo "macOS $(sw_vers -productVersion 2>/dev/null)，期望的管理员：$ADMIN
 sec "1. 账户与管理员"
 admin_users=$(dscacheutil -q group -a name admin | awk -F': ' '/^users:/{print $2}')
 extra=""; for u in $admin_users; do in_list "$u" "$ADMINS $SYSTEM_ADMINS" || extra="$extra $u"; done
-if [ -z "$extra" ]; then ok "管理员只有：$admin_users"; else bad "多出的管理员账户：$extra（应降为普通账户或删除）"; fi
+if [ -z "$extra" ]; then ok "管理员只有：$admin_users"; else bad "多出的管理员账户：${extra}（应降为普通账户或删除）"; fi
 for u in $ADMINS; do
   if ! id "$u" >/dev/null 2>&1; then warn "账户 $u 不存在"; continue; fi
   dseditgroup -o checkmember -m "$u" admin >/dev/null 2>&1 && ok "$u 是管理员" || bad "$u 不是管理员"
-  hidden=$(dscl . -read "/Users/$u" IsHidden 2>/dev/null | awk '{print $2}')
-  [ "$hidden" = "1" ] && ok "$u 已在登录界面隐藏" || warn "$u 没有隐藏（登录界面可见）"
-  dscl . -read "/Users/$u" LinkedIdentity >/dev/null 2>&1 && bad "$u 绑定了 Apple ID，可被用来重置密码" || ok "$u 没有绑定 Apple ID"
+  dscl . -read "/Users/$u" IsHidden 2>&1 | grep -Eq 'IsHidden:[[:space:]]*1' && ok "$u 已在登录界面隐藏" || warn "$u 没有隐藏（登录界面可见）"
+  dscl . -read "/Users/$u" LinkedIdentity 2>&1 | grep -q 'LinkedIdentity:' && bad "$u 绑定了 Apple ID，可被用来重置密码" || ok "$u 没有绑定 Apple ID"
 done
 
 users=$(dscl . list /Users UniqueID | awk '$2>=500 && $1 !~ /^_/ {print $1":"$2}')
@@ -41,7 +40,7 @@ for u in $ADMINS; do uid=$(id -u "$u" 2>/dev/null); [ -n "$uid" ] && [ "$uid" -g
 for pair in $users; do
   name=${pair%%:*}; uid=${pair##*:}
   in_list "$name" "$ADMINS" && continue
-  [ "$uid" -gt "$max_admin_uid" ] && warn "账户 $name（编号 $uid）比管理员账户建得更晚，确认是不是你建的"
+  [ "$uid" -gt "$max_admin_uid" ] && warn "账户 ${name}（编号 ${uid}）比管理员账户建得更晚，确认是不是你建的"
 done
 if [ "$(defaults read /Library/Preferences/com.apple.loginwindow GuestEnabled 2>/dev/null)" != "1" ]; then
   ok "客人账户已关闭"
@@ -75,9 +74,9 @@ PLIST=/Library/LaunchDaemons/com.gameguard.plist
 for f in "$PLIST" /usr/local/bin/gameguard.sh /usr/local/etc/gameguard.conf; do
   if [ -f "$f" ]; then
     own=$(stat -f '%Su' "$f"); mode=$(stat -f '%Lp' "$f")
-    if [ "$own" = "root" ]; then ok "$f（属主 root，权限 $mode）"; else bad "$f 属主是 $own，应为 root"; fi
+    if [ "$own" = "root" ]; then ok "${f}（属主 root，权限 ${mode}）"; else bad "$f 属主是 ${own}，应为 root"; fi
   else
-    bad "缺少 $f（可能被卸载）"
+    bad "缺少 ${f}（可能被卸载）"
   fi
 done
 if launchctl print system/com.gameguard >/dev/null 2>&1; then
