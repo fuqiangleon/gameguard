@@ -237,7 +237,9 @@ if [ "$MODE" = "show" ]; then
   echo "→ 网站：${SITE_TEXT}"
   if [ -n "$HB_TOPIC" ]; then
     hb_last=$(cat "$STATE_DIR/hb.last" 2>/dev/null)
-    echo "→ 心跳：已开启（每 $((HEARTBEAT_SECONDS / 60)) 分钟），上次成功：${hb_last:+$(date -r "$hb_last" '+%Y-%m-%d %H:%M:%S')}${hb_last:-还没有}"
+    if [ -n "$hb_last" ]; then hb_txt=$(date -r "$hb_last" '+%Y-%m-%d %H:%M:%S'); else hb_txt="还没有"; fi
+    echo "→ 心跳：已开启（每 $((HEARTBEAT_SECONDS / 60)) 分钟），上次成功：$hb_txt"
+    echo "→ 检查间隔：$(launchctl print system/com.gameguard 2>/dev/null | awk -F'= ' '/run interval/{print $2; exit}')"
   else
     echo "→ 心跳：未开启（在家长控制台首页点「开启心跳」）"
   fi
