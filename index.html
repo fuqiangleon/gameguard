@@ -163,6 +163,8 @@
   .hb-dot.off { background: var(--bad); }
   .hb-when { margin-left: auto; color: var(--muted); font-size: 13px; }
   .hb-line { font-size: 14px; margin-top: 4px; }
+  .hb-alert { font-size: 13px; margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+  .hb-note { font-size: 13px; margin-top: 6px; color: var(--muted); }
   .hb-warn { font-size: 13px; margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
   .tab { display: none; }
   .tab.active { display: block; }
@@ -509,17 +511,18 @@
 // ==LOGIC START== （纯函数：解析/生成配置文本，与 Mac 端 gameguard.sh 的格式一致）
 const DAY_NAMES = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const PRESETS = {
-  roblox: ['RobloxPlayer', 'RobloxStudio', 'Roblox.app'],
-  minecraft: ['Minecraft.app', 'minecraft-launcher', 'net.minecraft', 'Minecraft Education'],
-  prism: ['PrismLauncher'],
-  steam: ['Steam.app', 'steam_osx'],
-  discord: ['Discord.app'],
-  chatgpt: ['ChatGPT.app'],
-  applemaps: ['Maps.app'],
+  // 带点的规则（如 com.roblox.）同时按应用 Bundle ID 匹配，孩子给程序改名也能识别
+  roblox: ['RobloxPlayer', 'RobloxStudio', 'Roblox.app', 'com.roblox.'],
+  minecraft: ['Minecraft.app', 'minecraft-launcher', 'net.minecraft', 'Minecraft Education', 'com.mojang.'],
+  prism: ['PrismLauncher', 'org.prismlauncher.'],
+  steam: ['Steam.app', 'steam_osx', 'com.valvesoftware.steam'],
+  discord: ['Discord.app', 'com.hnc.Discord'],
+  chatgpt: ['ChatGPT.app', 'com.openai.chat'],
+  applemaps: ['Maps.app', 'com.apple.Maps'],
 };
 const DEFAULT_BLOCKS = [...PRESETS.roblox, ...PRESETS.minecraft];
 const SITE_PRESETS = {
-  roblox: ['roblox.com', 'web.roblox.com', 'rbxcdn.com'],
+  roblox: ['roblox.com', 'web.roblox.com', 'rbxcdn.com', 'now.gg'],   // now.gg：浏览器里玩 Roblox 的云游戏网站
   youtube: ['youtube.com', 'm.youtube.com', 'youtu.be', 'youtube-nocookie.com'],
   tiktok: ['tiktok.com', 'm.tiktok.com', 'tiktokv.com'],
   minecraft: ['minecraft.net', 'curseforge.com', 'modrinth.com'],
@@ -740,11 +743,34 @@ async function loadHeartbeats() {
       if (m.event !== 'message' || !d || d.gg !== 1) continue;
       d._at = new Date(m.time * 1000);
       const k = String(d.host || 'Mac');
-      if (!byHost.has(k) || byHost.get(k)._at < d._at) byHost.set(k, d);
+      if (!byHost.has(k)) byHost.set(k, []);
+      byHost.get(k).push(d);
     }
-    heartbeats = [...byHost.values()].sort((x, y) => y._at - x._at);
+    heartbeats = [...byHost.values()].map(list => {
+      list.sort((x, y) => x._at - y._at);
+      const latest = list[list.length - 1];
+      latest._events = analyzeGaps(list);
+      return latest;
+    }).sort((x, y) => y._at - x._at);
   } catch (e) { heartbeats = { error: e.message }; }
   renderHeartbeats();
+}
+// 分析相邻两次报到之间的空档：Mac 睡眠属正常；中途重启要留意（可能进过安全模式）；
+// 一直开着又没睡眠却不报到，说明管控程序可能被停止过。时间都用 Mac 自己报的时间，口径一致。
+const HB_GAP_MIN = 25;
+function analyzeGaps(list) {
+  const events = [];
+  for (let i = 1; i < list.length; i++) {
+    const a = list[i - 1], b = list[i];
+    if (!a.time || !b.time || b.time - a.time <= HB_GAP_MIN * 60) continue;
+    if (b.boot === undefined || b.wake === undefined) continue;      // 旧版本没有这些字段，无法判断
+    const mins = Math.round((b.time - a.time) / 60);
+    const span = `${hm(new Date(a.time * 1000))}–${hm(new Date(b.time * 1000))}`;
+    if (b.boot > a.time) events.push({ level: 'warn', text: `${span} 之间 Mac 重启过（${hm(new Date(b.boot * 1000))} 开机）。如果不是你重启的，可能有人进过安全模式。` });
+    else if (b.wake > a.time) continue;                                // 这段时间在睡眠，正常
+    else events.push({ level: 'alert', text: `${span} 共 ${mins} 分钟没有报到，但 Mac 一直开着、也没有睡眠——管控程序可能被停止过。` });
+  }
+  return events.slice(-3).reverse();
 }
 function newTopic() {
   const b = crypto.getRandomValues(new Uint8Array(16));
@@ -795,6 +821,8 @@ function renderHeartbeats() {
       h.last_kill && Date.now() / 1000 - h.last_kill < 86400 ? '最近关闭游戏：' + hm(new Date(h.last_kill * 1000)) : '',
       h.version ? '版本 ' + h.version : ''].filter(Boolean).join(' · ');
     row.append(el('div', 'hb-line muted', extra));
+    if (h.safeboot) row.append(el('div', 'hb-alert', 'Mac 当前处于安全模式：管控可能不完整，请检查。'));
+    for (const ev of h._events || []) row.append(el('div', ev.level === 'alert' ? 'hb-alert' : 'hb-warn', ev.text));
     if (!online) row.append(el('div', 'hb-warn', `已经 ${ago(age).replace('前', '')}没有报到。Mac 可能关机、睡眠或断网；如果孩子此时正在用这台电脑，说明管控程序可能被关掉了。`));
     box.append(row);
   }
