@@ -339,7 +339,7 @@ if [ $APP_ALLOWED -eq 0 ]; then
         lbid=$(echo "$bid" | tr 'A-Z' 'a-z')
         if [ -n "$lbid" ]; then
           for r in "${bid_rules[@]}"; do
-            case "$lbid" in "$r"*) kill_pid "$pid" "$r" "（Bundle ID $bid）"; continue 3 ;; esac
+            case "$lbid" in "$r"*) kill_pid "$pid" "$r" "（Bundle ID ${bid}）"; continue 3 ;; esac
           done
         fi
         app="${app%/*}"                             # 去掉最后一个 .app，继续检查外层
